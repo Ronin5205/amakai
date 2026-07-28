@@ -146,6 +146,23 @@
       scroll-behavior: auto;
     }
   }
+  html.splash-active {
+    overflow: hidden;
+  }
+  .theme-skip,
+  .theme-skip *,
+  .theme-skip *::before,
+  .theme-skip *::after {
+    transition-property: none !important;
+  }
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition-property: background-color, border-color, color, fill, stroke, outline-color, box-shadow, --tw-ring-color;
+    transition-duration: 200ms;
+    transition-timing-function: ease-out;
+  }
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading;
   }

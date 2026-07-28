@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans, Instrument_Sans } from "next/font/google";
 import "./globals.css";
+import { SiteLoader } from "@/components/site-loader";
 import { cn } from "@/lib/utils";
 import { siteConfig } from "@/lib/content";
 import { themeInitScript } from "@/lib/theme";
@@ -84,7 +85,10 @@ export default function RootLayout({
         {/* Applies the stored theme before first paint so the page never flashes. */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <SiteLoader />
+        {children}
+      </body>
     </html>
   );
 }

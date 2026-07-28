@@ -6,6 +6,30 @@ export type Theme = "light" | "dark"
  */
 export const THEME_STORAGE_KEY = "amakai-theme"
 
+const THEME_TRANSITION_MS = 200
+const THEME_TRANSITION_CLASS = "theme-transition"
+
+function runWithThemeTransition(apply: () => void) {
+  if (typeof document === "undefined") {
+    apply()
+    return
+  }
+
+  const root = document.documentElement
+
+  if (typeof document.startViewTransition === "function") {
+    document.startViewTransition(apply)
+    return
+  }
+
+  root.classList.add(THEME_TRANSITION_CLASS)
+  apply()
+  window.setTimeout(
+    () => root.classList.remove(THEME_TRANSITION_CLASS),
+    THEME_TRANSITION_MS
+  )
+}
+
 /**
  * Runs in `<head>` before first paint, so the correct theme is already on
  * `<html>` by the time the body renders. Kept dependency-free and wrapped in a
@@ -50,10 +74,12 @@ export function applyTheme(theme: Theme) {
 
 /** Applies a theme and remembers the choice for subsequent visits. */
 export function setTheme(theme: Theme) {
-  applyTheme(theme)
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme)
-  } catch {
-    // Persisting is best-effort; the class is already applied.
-  }
+  runWithThemeTransition(() => {
+    applyTheme(theme)
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme)
+    } catch {
+      // Persisting is best-effort; the class is already applied.
+    }
+  })
 }

@@ -23,34 +23,31 @@ import { cn } from "@/lib/utils"
 const enter =
   "animate-in fade-in slide-in-from-bottom-2 fill-mode-both ease-out animation-duration-500 motion-reduce:animate-none"
 
+/** Keeps a subtree from running its own color transitions during theme flips. */
+const themeSkip = "theme-skip"
+
 type FlowNode = {
   meta: string
   label: string
   kind: "trigger" | "step" | "outcome"
   Icon: PhosphorIcon
-  delay: string
 }
-
-const stepDelays = ["delay-500", "delay-600", "delay-700"]
 
 const flow: FlowNode[] = [
   {
     ...hero.workflow.trigger,
     kind: "trigger",
     Icon: LightningIcon,
-    delay: "delay-400",
   },
-  ...hero.workflow.steps.map((step, index) => ({
+  ...hero.workflow.steps.map((step) => ({
     ...step,
     kind: "step" as const,
     Icon: GearSixIcon,
-    delay: stepDelays[index] ?? "delay-700",
   })),
   {
     ...hero.workflow.outcome,
     kind: "outcome",
     Icon: CheckCircleIcon,
-    delay: "delay-800",
   },
 ]
 
@@ -61,10 +58,8 @@ function WorkflowNode({ node }: { node: FlowNode }) {
   return (
     <div
       className={cn(
-        "flex items-start gap-3 border border-border bg-background px-3 py-2.5",
-        isOutcome && "border-primary/50",
-        enter,
-        node.delay
+        "flex items-start gap-3 border border-border px-3 py-2.5",
+        isOutcome && "border-primary/50"
       )}
     >
       <span
@@ -143,7 +138,7 @@ export function Hero() {
             </p>
           </div>
 
-          <Card className={cn("w-full", enter, "delay-300")}>
+          <Card className={cn("w-full", themeSkip, enter, "delay-300")}>
             <CardContent>
               <ol className="flex flex-col">
                 {flow.map((node, index) => (
@@ -159,7 +154,7 @@ export function Hero() {
                 ))}
               </ol>
             </CardContent>
-            <CardFooter className={cn("items-baseline justify-between gap-4", enter, "delay-900")}>
+            <CardFooter className="items-baseline justify-between gap-4">
               <span className="font-heading text-2xl font-medium tabular-nums">
                 {stat.value}
               </span>

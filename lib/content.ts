@@ -67,10 +67,10 @@ export const portalRoutes = {
 } as const
 
 export const siteConfig = {
-  name: "Amakai",
+  name: "AmakAI",
   tagline: "Automation and custom software for teams that outgrew their spreadsheets.",
   description:
-    "Amakai builds done-for-you automations, AI assistants and internal software for small and mid-size businesses, so your team stops copying and pasting between apps.",
+    "AmakAI builds done-for-you automations, AI assistants and internal software for small and mid-size businesses, so your team stops copying and pasting between apps.",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://amakai.com",
   email: "hello@amakai.com",
   locale: "en_US",
@@ -135,7 +135,7 @@ export const hero = {
   eyebrow: "Automation studio",
   title: "Stop paying people to copy and paste.",
   description:
-    "Amakai builds the automations and internal software your team keeps saying somebody should get around to. We map the manual work, wire up the tools you already pay for, and hand back systems that run without anyone watching them.",
+    "AmakAI builds the automations and internal software your team keeps saying somebody should get around to. We map the manual work, wire up the tools you already pay for, and hand back systems that run without anyone watching them.",
   primaryCta: { label: "Create an account", href: portalRoutes.signUp } satisfies CtaLink,
   secondaryCta: { label: "Sign in", href: portalRoutes.signIn } satisfies CtaLink,
   note: "No sales call to get started. Open an account and tell us which process hurts most.",
