@@ -7,19 +7,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@amakai/shared/components/ui/card"
-import { services } from "@/lib/content"
+import { capabilities } from "@/lib/content"
 
-export function Services() {
+export function Capabilities() {
   return (
     <Section
-      id={services.id}
-      eyebrow={services.eyebrow}
-      title={services.title}
-      description={services.description}
+      id={capabilities.id}
+      eyebrow={capabilities.eyebrow}
+      title={capabilities.title}
+      description={capabilities.description}
       bordered
     >
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {services.items.map(({ title, description, Icon }) => (
+        {capabilities.items.map(({ title, description, Icon }) => (
           <li key={title} className="flex">
             <Card className="w-full">
               <CardHeader>

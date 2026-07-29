@@ -35,19 +35,20 @@ export const portalRoutes = {
 
 export const siteConfig = {
   name: "AmakAI",
-  tagline: "Automation and custom software for teams that outgrew their spreadsheets.",
+  tagline:
+    "Describe workflows in plain language. Deploy production-ready automations in minutes.",
   description:
-    "AmakAI builds done-for-you automations, AI assistants and internal software for small and mid-size businesses, so your team stops copying and pasting between apps.",
+    "AmakAI is an intelligent automation operating system that assembles workflows from predefined, reusable components — not generated code. Describe your requirements in natural language, and the platform configures, validates, deploys, and monitors production-ready automation pipelines.",
   /** Each app sets this to its own public URL at deploy time. */
   url: process.env.NEXT_PUBLIC_SITE_URL ?? landingUrl,
   email: "hello@amakai.com",
   locale: "en_US",
   keywords: [
-    "business process automation",
-    "workflow automation agency",
-    "custom internal tools",
-    "AI agents for business",
-    "custom SaaS development",
-    "n8n consultant",
+    "AI workflow automation",
+    "natural language workflow builder",
+    "workflow assembly platform",
+    "business process automation software",
+    "workflow monitoring",
+    "automation component library",
   ],
 }

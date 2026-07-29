@@ -1,13 +1,26 @@
 import type { Icon } from "@phosphor-icons/react"
 import {
-  BlueprintIcon,
+  BrainIcon,
   ChartLineUpIcon,
-  CubeIcon,
+  ChatCircleTextIcon,
+  CloudArrowUpIcon,
+  CodeIcon,
+  CpuIcon,
   FlowArrowIcon,
-  MapTrifoldIcon,
+  GaugeIcon,
+  GraphIcon,
+  HeadsetIcon,
+  LightningIcon,
+  MagnifyingGlassIcon,
+  MegaphoneIcon,
+  PackageIcon,
   PlugsConnectedIcon,
-  RobotIcon,
-  SquaresFourIcon,
+  RocketLaunchIcon,
+  ShieldCheckIcon,
+  SlidersHorizontalIcon,
+  StorefrontIcon,
+  TreeStructureIcon,
+  UsersThreeIcon,
   WrenchIcon,
 } from "@phosphor-icons/react/ssr"
 
@@ -38,18 +51,31 @@ export interface WorkflowNode {
   label: string
 }
 
-export interface ServiceItem {
+export interface CapabilityItem {
   title: string
   description: string
   Icon: Icon
 }
 
-export interface ProcessStep {
+export interface HowItWorksStep {
   /** Zero-padded index for tabular display, e.g. "01". */
   step: string
   title: string
   description: string
   duration: string
+  Icon: Icon
+}
+
+export interface UseCaseItem {
+  persona: string
+  headline: string
+  description: string
+  Icon: Icon
+}
+
+export interface PlatformTeamItem {
+  role: string
+  description: string
   Icon: Icon
 }
 
@@ -70,8 +96,9 @@ export { portalRoutes }
 export const siteConfig = {
   ...baseSiteConfig,
   nav: [
-    { label: "Services", href: "#services" },
-    { label: "Process", href: "#process" },
+    { label: "Capabilities", href: "#capabilities" },
+    { label: "How it works", href: "#how-it-works" },
+    { label: "Use cases", href: "#use-cases" },
     { label: "FAQ", href: "#faq" },
   ] as NavItem[],
   /** Labelled portal links for the header — point at the portal app's domain. */
@@ -82,124 +109,261 @@ export const siteConfig = {
 }
 
 export const hero = {
-  eyebrow: "Automation studio",
-  title: "Stop paying people to copy and paste.",
+  eyebrow: "AI Workflow Assembly Platform",
+  title: "Describe a workflow. Deploy it in minutes.",
   description:
-    "AmakAI builds the automations and internal software your team keeps saying somebody should get around to. We map the manual work, wire up the tools you already pay for, and hand back systems that run without anyone watching them.",
-  primaryCta: { label: "Create an account", href: portalRoutes.signUp } satisfies CtaLink,
+    "AmakAI is an intelligent automation operating system that assembles workflows from predefined, reusable components — not generated code. Describe your requirements in natural language, and the platform configures, validates, deploys, and monitors production-ready pipelines for you.",
+  primaryCta: { label: "Start building", href: portalRoutes.signUp } satisfies CtaLink,
   secondaryCta: { label: "Sign in", href: portalRoutes.signIn } satisfies CtaLink,
-  note: "No sales call to get started. Open an account and tell us which process hurts most.",
-  /** Trigger → three steps → outcome, rendered as the hero's workflow diagram. */
+  note: "Free to start. Describe your first workflow and see it assembled.",
+  /** NL input → assembly steps → outcome, rendered as the hero's workflow diagram. */
   workflow: {
-    trigger: { meta: "Trigger", label: "Order lands in the store" } satisfies WorkflowNode,
+    trigger: {
+      meta: "Input",
+      label: "When a support ticket is tagged urgent…",
+    } satisfies WorkflowNode,
     steps: [
-      { meta: "Step 01", label: "Check stock, flag the exceptions" },
-      { meta: "Step 02", label: "Raise the invoice in accounting" },
-      { meta: "Step 03", label: "Post the handover to the ops channel" },
+      { meta: "Step 01", label: "AI selects matching components" },
+      { meta: "Step 02", label: "Auto-configures APIs, auth, and retries" },
+      { meta: "Step 03", label: "Validates the graph before deploy" },
     ] satisfies WorkflowNode[],
-    outcome: { meta: "Outcome", label: "Nobody opens a spreadsheet" } satisfies WorkflowNode,
+    outcome: {
+      meta: "Outcome",
+      label: "Live in production — monitored and optimized",
+    } satisfies WorkflowNode,
     stat: {
-      value: "14 hrs",
-      label: "handed back to the team every week",
+      value: "Minutes",
+      label: "from description to deployed workflow",
     },
   },
 }
 
 export const trustStrip = {
-  label: "Built on tooling you already own",
+  label: "Powered by a growing component ecosystem",
   items: ["n8n", "Make", "OpenAI", "Supabase", "Stripe"],
 }
 
-export const services = {
-  id: "services",
-  eyebrow: "What we build",
-  title: "Six ways we take work off your team.",
+export const capabilities = {
+  id: "capabilities",
+  eyebrow: "Platform capabilities",
+  title: "From requirement to optimized automation — automatically.",
   description:
-    "Most engagements start with one of these and grow from there. Everything is built on your accounts, in your stack, and handed over documented.",
+    "Every stage of the workflow lifecycle is handled by the platform. You describe the outcome; AmakAI assembles, configures, validates, deploys, and keeps it running.",
   items: [
     {
-      title: "Workflow automation",
+      title: "Natural language input",
       description:
-        "The repetitive path between your apps — orders, onboarding, approvals, invoicing — rebuilt as a workflow that runs on its own and pings a human only when something genuinely needs judgement.",
-      Icon: FlowArrowIcon,
+        "Describe business needs in plain English. The AI extracts objectives, identifies missing details, and asks clarifying questions when needed.",
+      Icon: ChatCircleTextIcon,
     },
     {
-      title: "AI agents and assistants",
+      title: "Workflow graph generation",
       description:
-        "Assistants for the messy inputs: inbound email, supplier PDFs, support tickets, half-filled forms. They read, classify, draft and route, and they escalate instead of guessing.",
-      Icon: RobotIcon,
+        "Requirements become visual, executable pipeline graphs — sequential, parallel, conditional, or event-driven — ready to inspect before anything runs.",
+      Icon: GraphIcon,
     },
     {
-      title: "App and data integrations",
+      title: "Smart component matching",
       description:
-        "Your CRM, accounting, inventory and spreadsheets finally talking to each other, with one record of the truth instead of five that quietly disagree.",
-      Icon: PlugsConnectedIcon,
+        "The platform searches a library of predefined components, ranks them by suitability, resolves dependency conflicts, and ensures version compatibility.",
+      Icon: MagnifyingGlassIcon,
     },
     {
-      title: "Internal tools and dashboards",
+      title: "Auto-configuration",
       description:
-        "The admin screen your team actually needs — search, edit, approve, export — shaped around how they work rather than what an off-the-shelf product happens to allow.",
-      Icon: SquaresFourIcon,
+        "Endpoints, authentication, prompt templates, retry policies, timeouts, rate limits, and input/output mappings are filled in automatically.",
+      Icon: SlidersHorizontalIcon,
     },
     {
-      title: "Reporting pipelines",
+      title: "Pre-deploy validation",
       description:
-        "Numbers that assemble themselves. Scheduled pulls from every source, checks that catch the gaps, and the report sitting in your inbox before Monday's meeting.",
+        "Correctness checks catch conflicts, missing credentials, and incompatible connections before a workflow reaches production.",
+      Icon: ShieldCheckIcon,
+    },
+    {
+      title: "One-click deployment",
+      description:
+        "Push validated pipelines to production with minimal setup. No manual wiring between services or hand-written integration glue.",
+      Icon: RocketLaunchIcon,
+    },
+    {
+      title: "Live execution monitoring",
+      description:
+        "Real-time visibility into every workflow run — step status, errors, retries, and human-in-the-loop checkpoints as they happen.",
+      Icon: GaugeIcon,
+    },
+    {
+      title: "Performance optimization",
+      description:
+        "Continuous analysis surfaces bottlenecks, failed steps, and tuning opportunities so workflows get faster and more reliable over time.",
+      Icon: LightningIcon,
+    },
+    {
+      title: "Operational analytics",
+      description:
+        "Dashboards, metrics, and actionable insights across your entire automation estate — volume, latency, success rates, and cost.",
       Icon: ChartLineUpIcon,
     },
-    {
-      title: "Custom SaaS builds",
-      description:
-        "When the way you work is the advantage, we build the product around it — accounts, billing, permissions and the rest of the boring foundations included.",
-      Icon: CubeIcon,
-    },
-  ] satisfies ServiceItem[],
+  ] satisfies CapabilityItem[],
 }
 
-/**
- * Named `processSection` rather than `process` so importing it never shadows
- * Node's global `process`.
- */
-export const processSection = {
-  id: "process",
+export const howItWorks = {
+  id: "how-it-works",
   eyebrow: "How it works",
-  title: "Map it, price it, build it, run it.",
+  title: "Describe, assemble, deploy, optimize.",
   description:
-    "Four stages, no open-ended discovery bill. You know the scope and the cost before anyone writes code.",
+    "Five steps from a plain-language requirement to a production workflow that monitors and improves itself.",
   steps: [
     {
       step: "01",
-      title: "Map",
+      title: "Describe",
       description:
-        "We sit with the people doing the work and write down every step, click and workaround. It usually takes a week, and the map is yours whether or not you hire us to build anything.",
-      duration: "Week 1",
-      Icon: MapTrifoldIcon,
+        "State your automation need in natural language — who triggers it, what systems it touches, and what the outcome should be.",
+      duration: "Instant",
+      Icon: ChatCircleTextIcon,
     },
     {
       step: "02",
-      title: "Blueprint",
+      title: "Assemble",
       description:
-        "A written plan: what gets automated first, which systems it touches, what it costs, and the hours it should give back. Fixed scope, fixed price, no surprises invoiced later.",
-      duration: "Week 2",
-      Icon: BlueprintIcon,
+        "AI selects and connects predefined components from the library into a workflow graph you can review and adjust.",
+      duration: "Seconds",
+      Icon: TreeStructureIcon,
     },
     {
       step: "03",
-      title: "Build",
+      title: "Configure & validate",
       description:
-        "We build in short passes and put each piece in front of your team as it lands, so the awkward edge cases surface while they are still cheap to fix.",
-      duration: "Weeks 3-6",
-      Icon: WrenchIcon,
+        "Parameters are auto-filled, credentials mapped, and the graph validated for correctness before anything goes live.",
+      duration: "Automatic",
+      Icon: ShieldCheckIcon,
     },
     {
       step: "04",
-      title: "Run",
+      title: "Deploy",
       description:
-        "We watch it in production, fix what breaks, then hand over the keys with documentation and alerting. Keep us on retainer or take it in-house — the code is yours either way.",
+        "Push the validated pipeline to production with one action. No manual integration work or deployment scripts.",
+      duration: "One click",
+      Icon: CloudArrowUpIcon,
+    },
+    {
+      step: "05",
+      title: "Monitor & optimize",
+      description:
+        "Track every execution in real time. Analytics and optimization suggestions keep workflows fast and reliable.",
       duration: "Ongoing",
+      Icon: ChartLineUpIcon,
+    },
+  ] satisfies HowItWorksStep[],
+}
+
+export const useCases = {
+  id: "use-cases",
+  eyebrow: "Built for your team",
+  title: "Automation for every role, not just engineers.",
+  description:
+    "Whether you run a small business or an enterprise platform team, AmakAI turns natural-language requirements into workflows that fit how you work.",
+  items: [
+    {
+      persona: "Small & medium businesses",
+      headline: "Onboard new clients without manual data entry",
+      description:
+        "Describe the onboarding flow once. The platform assembles CRM updates, welcome emails, and task assignments into a pipeline that runs on every new signup.",
+      Icon: StorefrontIcon,
+    },
+    {
+      persona: "Enterprise organizations",
+      headline: "Cross-department approval chains with audit trails",
+      description:
+        "Build multi-step approval workflows with conditional branching, parallel reviews, and a complete execution history for compliance.",
+      Icon: UsersThreeIcon,
+    },
+    {
+      persona: "Marketing agencies",
+      headline: "Campaign reporting pipelines that assemble themselves",
+      description:
+        "Pull data from ad platforms, analytics, and CRMs into scheduled reports — assembled from components, not stitched together by hand.",
+      Icon: MegaphoneIcon,
+    },
+    {
+      persona: "Customer support teams",
+      headline: "Route, classify, and escalate tickets automatically",
+      description:
+        "Describe your routing rules in plain language. AI classifies inbound tickets, assigns priority, and escalates when a human is needed.",
+      Icon: HeadsetIcon,
+    },
+    {
+      persona: "Sales organizations",
+      headline: "Lead enrichment and CRM sync on every inbound form",
+      description:
+        "Every form submission triggers enrichment, deduplication, and CRM updates — validated and deployed without writing integration code.",
       Icon: FlowArrowIcon,
     },
-  ] satisfies ProcessStep[],
+    {
+      persona: "Software developers",
+      headline: "Extend workflows with custom components and APIs",
+      description:
+        "Publish reusable building blocks to the component library and wire them into AI-assembled graphs alongside prebuilt integrations.",
+      Icon: CodeIcon,
+    },
+    {
+      persona: "IT administrators",
+      headline: "Provision accounts and enforce policies across systems",
+      description:
+        "Automate user provisioning, access reviews, and policy enforcement across your stack with auditable, monitored workflows.",
+      Icon: WrenchIcon,
+    },
+  ] satisfies UseCaseItem[],
+}
+
+export const platformTeams = {
+  id: "platform-teams",
+  eyebrow: "For platform teams",
+  title: "Govern, extend, and operate at scale.",
+  description:
+    "Administrative roles get the controls they need to manage the platform, its components, and the workflows running on it.",
+  items: [
+    {
+      role: "Platform administrators",
+      description:
+        "Org-wide governance, roles, environment control, and policy enforcement across every team and workflow.",
+      Icon: UsersThreeIcon,
+    },
+    {
+      role: "Component developers",
+      description:
+        "Publish, version, and maintain reusable workflow building blocks in the shared component library.",
+      Icon: PackageIcon,
+    },
+    {
+      role: "AI engineers",
+      description:
+        "Tune models, prompts, and intelligent configuration rules that power auto-assembly and parameter generation.",
+      Icon: BrainIcon,
+    },
+    {
+      role: "DevOps engineers",
+      description:
+        "Deployment pipelines, scaling policies, and infrastructure hooks for reliable workflow execution at volume.",
+      Icon: CpuIcon,
+    },
+    {
+      role: "Security administrators",
+      description:
+        "Access control, audit logs, credential management, and compliance posture across the entire platform.",
+      Icon: ShieldCheckIcon,
+    },
+    {
+      role: "System operators",
+      description:
+        "Uptime monitoring, incident response, and operational dashboards for every workflow in production.",
+      Icon: GaugeIcon,
+    },
+  ] satisfies PlatformTeamItem[],
+  cta: {
+    label: "Talk to us about enterprise",
+    href: `mailto:${baseSiteConfig.email}`,
+  } satisfies CtaLink,
 }
 
 export const faq = {
@@ -211,39 +375,39 @@ export const faq = {
   items: [
     {
       value: "item-1",
-      question: "What size of problem is worth automating?",
+      question: "How is this different from writing code or using Zapier?",
       answer:
-        "If a task eats more than about two hours a week and follows rules someone can write down, it is worth a look. First projects are deliberately narrow — one painful process, not your whole operation — so you see the return before committing to anything bigger.",
+        "AmakAI assembles workflows from a library of predefined, tested components — it does not generate arbitrary code. Unlike manual wiring in integration tools, the platform uses AI to select components, configure parameters, and validate the graph before deployment. You describe the outcome; the platform handles the assembly.",
     },
     {
       value: "item-2",
-      question: "How long does a first project take?",
+      question: "What can I describe in natural language?",
       answer:
-        "Most first builds ship in four to six weeks: roughly a week mapping the process, a week agreeing the blueprint, then two to four weeks building and testing alongside your team. A single integration can be live in days.",
+        "Business processes, triggers, systems involved, and desired outcomes — for example, \"When a support ticket is tagged urgent, classify it, notify the on-call lead, and create a Slack thread.\" The AI extracts objectives, estimates complexity, and asks clarifying questions when details are missing.",
     },
     {
       value: "item-3",
-      question: "Do we have to replace the software we already use?",
+      question: "What happens before a workflow goes live?",
       answer:
-        "Almost never. We build on top of what you own, so your CRM, accounting and spreadsheets stay exactly where they are. We work with tools like n8n, Make, Supabase, Stripe and the OpenAI API, and we will tell you when an off-the-shelf product would be cheaper than anything we could build for you.",
+        "Every workflow passes through pre-deploy validation: dependency checks, credential mapping, conflict detection, and a preview of the execution graph. You review the assembled pipeline before deploying, and rollback is available if something needs adjusting after launch.",
     },
     {
       value: "item-4",
-      question: "Who owns the code and the automations?",
+      question: "Can I use my existing tools?",
       answer:
-        "You do, outright. Everything is built in your accounts and your repositories with no lock-in clause. If we stopped working together tomorrow, nothing switches off and any competent developer can pick it up.",
+        "Yes. The component ecosystem includes integrations for tools like n8n, Make, OpenAI, Supabase, Stripe, and more. Workflows connect to the systems you already use — the platform assembles the pipeline; your tools stay where they are.",
     },
     {
       value: "item-5",
-      question: "What happens to our data?",
+      question: "How do I monitor workflows after deployment?",
       answer:
-        "It stays in systems you control. We work with least-privilege access, remove our own when a project ends, and keep your customer data out of model training. We will sign your NDA and data processing agreement, and if a workflow has to stay entirely inside your infrastructure, we build it that way.",
+        "Every deployed workflow gets real-time execution monitoring — step status, errors, retries, and human-in-the-loop checkpoints. Operational analytics dashboards show volume, latency, success rates, and optimization suggestions across your entire automation estate.",
     },
     {
       value: "item-6",
-      question: "What happens after handover?",
+      question: "Who owns the workflows and data?",
       answer:
-        "You get documentation, a walkthrough with your team and a recording of it. Automations tend to fail quietly, so every build ships with alerting that tells you the moment something stops. From there you can run it yourself or keep us on a support retainer — most teams start with a month and decide after that.",
+        "You do. Workflows run in your environment with your credentials and your data. AmakAI does not lock you in — components are reusable building blocks, and you retain full ownership of every pipeline the platform assembles.",
     },
   ] satisfies FaqItem[],
 }
@@ -251,12 +415,12 @@ export const faq = {
 export const finalCta = {
   id: "get-started",
   eyebrow: "Get started",
-  title: "Find out what your manual work is costing you.",
+  title: "Describe your first workflow. See it assembled.",
   description:
-    "Open an account and describe the process that wastes the most time. We will come back with a map of it, an honest estimate of the hours it is eating, and what it would take to automate — before you spend anything.",
-  primaryCta: { label: "Create an account", href: portalRoutes.signUp } satisfies CtaLink,
+    "Open an account, describe a process in plain language, and watch the platform select components, configure parameters, and build an executable workflow graph — before you deploy anything.",
+  primaryCta: { label: "Start building", href: portalRoutes.signUp } satisfies CtaLink,
   secondaryCta: { label: "Sign in", href: portalRoutes.signIn } satisfies CtaLink,
-  note: "Free to set up. No card, no sales call.",
+  note: "Free to start. No card required.",
 }
 
 export const footer = {
@@ -265,9 +429,11 @@ export const footer = {
     {
       title: "Explore",
       links: [
-        { label: "Services", href: "#services" },
-        { label: "Process", href: "#process" },
+        { label: "Capabilities", href: "#capabilities" },
+        { label: "How it works", href: "#how-it-works" },
+        { label: "Use cases", href: "#use-cases" },
         { label: "FAQ", href: "#faq" },
+        { label: "Platform teams", href: "#platform-teams" },
       ],
     },
     {
