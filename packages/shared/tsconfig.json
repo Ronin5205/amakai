@@ -13,5 +13,6 @@
     "isolatedModules": true,
     "jsx": "react-jsx"
   },
-  "exclude": ["node_modules", "apps", "packages"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules"]
 }

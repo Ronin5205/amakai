@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Scan this app's routes and components for utility classes. */
+@source "../";
+
+@import "@amakai/shared/styles/sources.css";
+@import "@amakai/shared/styles/theme.css";
