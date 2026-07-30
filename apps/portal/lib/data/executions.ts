@@ -1,13 +1,17 @@
 import type { Execution, ExecutionSummary } from "@/lib/domain/execution"
-import {
-  executionFixtures,
-  executionSummaryFixture,
-} from "./fixtures/executions"
+
+const emptyExecutionSummary: ExecutionSummary = {
+  running: 0,
+  queued: 0,
+  completed: 0,
+  failed: 0,
+  pendingApproval: 0,
+}
 
 export async function listExecutions(): Promise<Execution[]> {
-  return executionFixtures
+  return []
 }
 
 export async function getExecutionSummary(): Promise<ExecutionSummary> {
-  return executionSummaryFixture
+  return emptyExecutionSummary
 }

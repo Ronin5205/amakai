@@ -1,19 +1,30 @@
 import type { ExecutionSummary } from "@/lib/domain/execution"
 import type { AiUsage, LatencyMetric } from "@/lib/domain/monitoring"
-import {
-  aiUsageFixture,
-  liveWorkflowCountsFixture,
-  performanceMetricsFixtures,
-} from "./fixtures/dashboard"
+
+const emptyWorkflowCounts: ExecutionSummary = {
+  running: 0,
+  queued: 0,
+  completed: 0,
+  failed: 0,
+  pendingApproval: 0,
+}
+
+const emptyAiUsage: AiUsage = {
+  promptTokens: 0,
+  completionTokens: 0,
+  totalRequests: 0,
+  avgCostUsd: 0,
+  modelUtilization: {},
+}
 
 export async function getLiveWorkflowCounts(): Promise<ExecutionSummary> {
-  return liveWorkflowCountsFixture
+  return emptyWorkflowCounts
 }
 
 export async function getPerformanceMetrics(): Promise<LatencyMetric[]> {
-  return performanceMetricsFixtures
+  return []
 }
 
 export async function getAiUsage(): Promise<AiUsage> {
-  return aiUsageFixture
+  return emptyAiUsage
 }

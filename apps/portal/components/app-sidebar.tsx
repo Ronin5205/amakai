@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { CaretRightIcon } from "@phosphor-icons/react"
 
 import {
@@ -35,11 +35,19 @@ import {
 } from "@amakai/shared/components/ui/sidebar"
 import { siteConfig } from "@amakai/shared/lib/site-config"
 import { cn } from "@amakai/shared/lib/utils"
-function NavLinkItem({ item, pathname }: { item: PortalNavItem; pathname: string }) {
+function NavLinkItem({
+  item,
+  pathname,
+  search,
+}: {
+  item: PortalNavItem
+  pathname: string
+  search: string
+}) {
   if (!item.href) return null
 
   const Icon = item.icon
-  const active = isNavItemActive(pathname, item.href)
+  const active = isNavItemActive(pathname, item.href, search)
 
   return (
     <SidebarMenuItem>
@@ -55,7 +63,15 @@ function NavLinkItem({ item, pathname }: { item: PortalNavItem; pathname: string
   )
 }
 
-function NavGroupItem({ item, pathname }: { item: PortalNavItem; pathname: string }) {
+function NavGroupItem({
+  item,
+  pathname,
+  search,
+}: {
+  item: PortalNavItem
+  pathname: string
+  search: string
+}) {
   if (!item.items?.length) return null
 
   const Icon = item.icon
@@ -81,7 +97,7 @@ function NavGroupItem({ item, pathname }: { item: PortalNavItem; pathname: strin
                   if (!subItem.href) return null
 
                   const SubIcon = subItem.icon
-                  const active = isNavItemActive(pathname, subItem.href)
+                  const active = isNavItemActive(pathname, subItem.href, search)
 
                   return (
                     <SidebarMenuSubItem key={subItem.href}>
@@ -134,6 +150,8 @@ function SidebarLogo() {
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const search = searchParams.toString()
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -151,7 +169,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenu>
               {portalNavigation.map((item) =>
                 item.href ? (
-                  <NavLinkItem key={item.title} item={item} pathname={pathname} />
+                  <NavLinkItem
+                    key={item.title}
+                    item={item}
+                    pathname={pathname}
+                    search={search}
+                  />
                 ) : null
               )}
             </SidebarMenu>
@@ -160,7 +183,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
 
         {portalNavigation.map((item) =>
           item.items ? (
-            <NavGroupItem key={item.title} item={item} pathname={pathname} />
+            <NavGroupItem
+              key={item.title}
+              item={item}
+              pathname={pathname}
+              search={search}
+            />
           ) : null
         )}
       </SidebarContent>

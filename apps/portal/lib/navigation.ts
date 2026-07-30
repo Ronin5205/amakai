@@ -17,15 +17,12 @@ import {
   KeyIcon,
   LightningIcon,
   ListChecksIcon,
-  MagicWandIcon,
   PackageIcon,
   PlugsConnectedIcon,
   PlayIcon,
   PuzzlePieceIcon,
   RocketLaunchIcon,
   ScrollIcon,
-  SparkleIcon,
-  StackIcon,
   TagIcon,
   TreeStructureIcon,
   UsersIcon,
@@ -54,15 +51,13 @@ export const portalNavigation: PortalNavItem[] = [
   },
   {
     title: "Design",
-    icon: MagicWandIcon,
+    icon: TreeStructureIcon,
     items: [
-      { title: "AI Builder", href: "/design/ai-builder", icon: SparkleIcon },
       {
-        title: "Workflow Editor",
-        href: "/design/workflow-editor",
+        title: "Workflows",
+        href: "/design/workflows",
         icon: TreeStructureIcon,
       },
-      { title: "Templates", href: "/design/templates", icon: StackIcon },
     ],
   },
   {
@@ -248,9 +243,45 @@ export function getBreadcrumbs(pathname: string): BreadcrumbCrumb[] {
   return [{ label: item.title, href: pathname }]
 }
 
-export function isNavItemActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/"
-  return pathname === href || pathname.startsWith(`${href}/`)
+export function isNavItemActive(
+  pathname: string,
+  href: string,
+  currentSearch = ""
+) {
+  const [hrefPath, hrefQuery] = href.split("?", 2)
+
+  if (hrefPath === "/") {
+    return pathname === "/"
+  }
+
+  const pathMatches =
+    pathname === hrefPath || pathname.startsWith(`${hrefPath}/`)
+
+  if (!pathMatches) {
+    return false
+  }
+
+  if (!hrefQuery) {
+    if (hrefPath === "/design/workflows") {
+      return (
+        pathname === "/design/workflows" ||
+        pathname.startsWith("/design/workflow-editor")
+      )
+    }
+
+    return true
+  }
+
+  const expected = new URLSearchParams(hrefQuery)
+  const current = new URLSearchParams(currentSearch)
+
+  for (const [key, value] of expected.entries()) {
+    if (current.get(key) !== value) {
+      return false
+    }
+  }
+
+  return true
 }
 
 export function isNavGroupActive(pathname: string, item: PortalNavItem) {

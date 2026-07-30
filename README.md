@@ -11,13 +11,17 @@ apps/
     app/              Next.js App Router routes
     components/
       views/          Presentational page UI (no data fetching)
+      design/         Workflow editor, canvas, and design hub UI
       portal/         Shared portal widgets (metrics, status badges, …)
       auth/           Sign-in / sign-up
     lib/
       domain/         TypeScript domain types (API contract)
       data/           Async data accessors ← backend swap point
         fixtures/     Mock data (delete imports when Supabase is live)
+      design/         Workflow canvas layout, graph helpers, editor types
+      actions/        Server Actions (workflow save, deploy, delete)
       auth/           Auth helpers
+    hooks/            Client hooks (editor state, auto-save, viewport)
     utils/supabase/   Supabase browser/server clients + session proxy
 packages/
   shared/           UI components, theme, and cross-app config
@@ -106,12 +110,37 @@ flowchart TB
 
 Detailed data-layer docs: [apps/portal/lib/data/README.md](apps/portal/lib/data/README.md).
 
+### Design / workflow editor
+
+The workflow editor is a full-screen canvas with floating toolbars and sheet panels (components, templates, AI builder). Draft workflows persist to Supabase when the user is signed in.
+
+| Route | Purpose |
+|-------|---------|
+| `/design/workflows` | List, create, and delete workflows |
+| `/design/workflow-editor?id=<uuid>` | Canvas editor (requires saved workflow id) |
+
+Editor URL params: `?panel=components|templates|ai` opens the resources or AI sheet on load.
+
+Key modules:
+
+| Area | Location |
+|------|----------|
+| Editor shell | `components/design/design-hub-view.tsx` |
+| Canvas | `components/design/workflow-node-graph.tsx` |
+| Client state + undo | `hooks/use-design-hub-state.ts` |
+| Auto-save | `hooks/use-workflow-auto-save.ts` |
+| Graph helpers | `lib/design/workflow-graph.ts`, `layout-utils.ts`, `canvas-viewport.ts` |
+| Mutations | `lib/actions/workflow-actions.ts` |
+| DB access | `lib/data/workflows.ts` |
+
+Apply migration `supabase/migrations/20260730183000_workflows_and_deploy.sql` before using save/deploy in production (Supabase SQL Editor if CLI Docker is unavailable).
+
 ### Implemented vs stub pages
 
 | Section | Status | Routes |
 |---------|--------|--------|
 | Dashboard | UI + fixtures | `/` |
-| Design | UI + fixtures | `/design/*` |
+| Design | Workflows + editor (Supabase drafts) | `/design/workflows`, `/design/workflow-editor?id=` |
 | Deploy | UI + fixtures | `/deploy/*` |
 | Operate | UI + fixtures | `/operate/*` |
 | Optimize | Stub (`SectionPage`) | `/optimize/*` |
@@ -158,9 +187,9 @@ For each file in `apps/portal/lib/data/`:
 
 Example accessor swap — see [apps/portal/lib/data/README.md](apps/portal/lib/data/README.md).
 
-### 4. Mutations (not yet implemented)
+### 4. Mutations (partial)
 
-Views expose disabled buttons (rollback, clone, acknowledge, deploy). When adding mutations:
+Workflow drafts use Server Actions in `lib/actions/workflow-actions.ts` (save, create, delete, deploy). Other sections still expose disabled buttons until mutations exist:
 
 - Prefer **Server Actions** colocated with the route or in `lib/actions/`
 - Call Supabase from the server client; revalidate paths after success

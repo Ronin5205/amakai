@@ -3,22 +3,25 @@ import type {
   PlanningStage,
   RequirementAnalysis,
 } from "@/lib/domain/planning"
-import {
-  clarificationQuestionFixtures,
-  planningStageFixtures,
-  sampleAnalysisFixture,
-} from "./fixtures/planning"
+
+const emptyAnalysis: RequirementAnalysis = {
+  intent: "",
+  domain: "",
+  complexity: "low",
+  objectives: [],
+  missingInfo: [],
+}
 
 export async function getPlanningStages(): Promise<PlanningStage[]> {
-  return planningStageFixtures
+  return []
 }
 
 export async function getSampleAnalysis(): Promise<RequirementAnalysis> {
-  return sampleAnalysisFixture
+  return emptyAnalysis
 }
 
 export async function getClarificationQuestions(): Promise<
   ClarificationQuestion[]
 > {
-  return clarificationQuestionFixtures
+  return []
 }

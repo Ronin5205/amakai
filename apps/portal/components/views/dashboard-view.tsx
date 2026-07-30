@@ -8,6 +8,7 @@ import {
   CpuIcon,
   GaugeIcon,
   LightningIcon,
+  MagicWandIcon,
   PulseIcon,
   QueueIcon,
   WarningCircleIcon,
@@ -22,6 +23,14 @@ import { SectionPage } from "@/components/section-page"
 import type { Execution, ExecutionSummary } from "@/lib/domain/execution"
 import type { AiUsage, LatencyMetric } from "@/lib/domain/monitoring"
 import { Button } from "@amakai/shared/components/ui/button"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@amakai/shared/components/ui/empty"
 import {
   Card,
   CardContent,
@@ -38,6 +47,7 @@ import {
 } from "@amakai/shared/components/ui/table"
 
 export interface DashboardViewProps {
+  hasWorkflows: boolean
   workflowCounts: ExecutionSummary
   performanceMetrics: LatencyMetric[]
   aiUsage: AiUsage
@@ -85,11 +95,41 @@ function computeAvgRuntime(executions: Execution[]) {
 }
 
 export function DashboardView({
+  hasWorkflows,
   workflowCounts,
   performanceMetrics,
   aiUsage,
   recentExecutions,
 }: DashboardViewProps) {
+  if (!hasWorkflows) {
+    return (
+      <SectionPage
+        eyebrow="Overview"
+        title={<DashboardGreetingTitle />}
+        description="Get started by creating your first workflow."
+      >
+        <Empty className="min-h-[320px] border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MagicWandIcon />
+            </EmptyMedia>
+            <EmptyTitle>No workflows yet</EmptyTitle>
+            <EmptyDescription>
+              Create a workflow to automate tasks, monitor executions, and
+              track performance across your workspace.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button render={<Link href="/design/workflows?new=1" />}>
+              Create workflow
+              <ArrowRightIcon data-icon="inline-end" />
+            </Button>
+          </EmptyContent>
+        </Empty>
+      </SectionPage>
+    )
+  }
+
   const totalOutcomes = workflowCounts.completed + workflowCounts.failed
   const successRate =
     totalOutcomes > 0

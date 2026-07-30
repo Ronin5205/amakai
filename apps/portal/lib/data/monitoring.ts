@@ -4,25 +4,19 @@ import type {
   QueueStats,
   ResourceMetric,
 } from "@/lib/domain/monitoring"
-import {
-  componentHealthFixtures,
-  latencyMetricsFixtures,
-  queueStatsFixtures,
-  resourceMetricsFixtures,
-} from "./fixtures/monitoring"
 
 export async function getResourceMetrics(): Promise<ResourceMetric[]> {
-  return resourceMetricsFixtures
+  return []
 }
 
 export async function getComponentHealth(): Promise<ComponentHealth[]> {
-  return componentHealthFixtures
+  return []
 }
 
 export async function getQueueStats(): Promise<QueueStats[]> {
-  return queueStatsFixtures
+  return []
 }
 
 export async function getLatencyMetrics(): Promise<LatencyMetric[]> {
-  return latencyMetricsFixtures
+  return []
 }
