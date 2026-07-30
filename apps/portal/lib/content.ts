@@ -35,7 +35,7 @@ export const portal = {
   signUp: {
     title: "Create an account",
     description:
-      "Create your portal account with Google, GitHub, or email and password.",
+      "Choose a username and create your portal account with Google, GitHub, or email and password.",
     crossLinkPrompt: "Already have an account?",
     crossLink: { label: "Sign in", href: portalRoutes.signIn },
   } satisfies PortalPageCopy,

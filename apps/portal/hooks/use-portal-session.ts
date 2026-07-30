@@ -3,6 +3,7 @@
 import * as React from "react"
 import type { User } from "@supabase/supabase-js"
 
+import { getUsername } from "@/lib/auth/user"
 import { createClient } from "@/utils/supabase/client"
 
 export function usePortalSession() {
@@ -35,6 +36,7 @@ export function usePortalSession() {
 
   return {
     user,
+    username: getUsername(user),
     isSignedIn: user !== null,
     isLoading,
     signOut,

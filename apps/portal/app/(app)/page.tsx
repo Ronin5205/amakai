@@ -1,11 +1,11 @@
 import type { Metadata } from "next"
 
-import { SectionPage } from "@/components/section-page"
+import { DashboardGreeting } from "@/components/dashboard-greeting"
 
 export const metadata: Metadata = {
   title: "Dashboard",
 }
 
 export default function DashboardPage() {
-  return <SectionPage title="Dashboard" />
+  return <DashboardGreeting />
 }
