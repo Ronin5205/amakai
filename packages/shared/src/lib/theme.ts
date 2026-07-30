@@ -1,4 +1,5 @@
 export type Theme = "light" | "dark"
+export type ThemePreference = Theme | "system"
 
 /**
  * Shared by the inline no-flash script in the root layout and by the theme
@@ -82,4 +83,30 @@ export function setTheme(theme: Theme) {
       // Persisting is best-effort; the class is already applied.
     }
   })
+}
+
+/** Returns the stored preference, or `"system"` when following the OS. */
+export function getThemePreference(): ThemePreference {
+  return getStoredTheme() ?? "system"
+}
+
+/** Clears the stored preference and applies the OS theme. */
+export function setSystemTheme() {
+  runWithThemeTransition(() => {
+    try {
+      localStorage.removeItem(THEME_STORAGE_KEY)
+    } catch {
+      // Clearing is best-effort.
+    }
+    applyTheme(getSystemTheme())
+  })
+}
+
+/** Applies a theme preference, including `"system"`. */
+export function setThemePreference(preference: ThemePreference) {
+  if (preference === "system") {
+    setSystemTheme()
+    return
+  }
+  setTheme(preference)
 }

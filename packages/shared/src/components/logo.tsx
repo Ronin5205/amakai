@@ -8,6 +8,8 @@ export interface LogoProps extends React.ComponentProps<"span"> {
   iconOnly?: boolean
   /** Classes for the wordmark text. */
   wordmarkClassName?: string
+  /** Classes for the brand glyph SVG. */
+  iconClassName?: string
 }
 
 /**
@@ -18,6 +20,7 @@ export function Logo({
   className,
   iconOnly = false,
   wordmarkClassName,
+  iconClassName,
   ...props
 }: LogoProps) {
   return (
@@ -30,7 +33,7 @@ export function Logo({
         aria-hidden="true"
         viewBox="0 0 64 64"
         fill="none"
-        className="size-7 shrink-0 text-primary"
+        className={cn("size-7 shrink-0 text-primary", iconClassName)}
       >
         {/* Outer segmented ring — 18 dashes around the circumference. */}
         <circle
