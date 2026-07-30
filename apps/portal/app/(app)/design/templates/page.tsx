@@ -1,11 +1,14 @@
 import type { Metadata } from "next"
 
-import { SectionPage } from "@/components/section-page"
+import { TemplatesView } from "@/components/views/templates-view"
+import { listTemplates } from "@/lib/data/templates"
 
 export const metadata: Metadata = {
   title: "Templates",
 }
 
-export default function Page() {
-  return <SectionPage eyebrow="Design" title="Templates" />
+export default async function TemplatesPage() {
+  const templates = await listTemplates()
+
+  return <TemplatesView templates={templates} />
 }

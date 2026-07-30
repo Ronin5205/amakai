@@ -1,0 +1,68 @@
+import type { LogEntry } from "@/lib/domain/monitoring"
+
+export const logFixtures: LogEntry[] = [
+  {
+    id: "log-001",
+    timestamp: "2026-07-30T10:45:12.000Z",
+    level: "info",
+    workflowName: "Invoice Processing Pipeline",
+    message: "Extracted invoice data from PDF attachment (vendor: Acme Corp, amount: $4,250.00)",
+    component: "document-parser",
+  },
+  {
+    id: "log-002",
+    timestamp: "2026-07-30T10:44:58.000Z",
+    level: "warn",
+    workflowName: "Lead Routing & Qualification",
+    message: "CRM enrichment API rate limit approaching (85% of quota used)",
+    component: "crm-connector",
+  },
+  {
+    id: "log-003",
+    timestamp: "2026-07-30T10:44:41.000Z",
+    level: "error",
+    workflowName: "Support Ticket Triage",
+    message: "Failed to classify ticket: AI model timeout after 30s retry exhaustion",
+    component: "ai-classifier",
+  },
+  {
+    id: "log-004",
+    timestamp: "2026-07-30T10:44:22.000Z",
+    level: "info",
+    workflowName: "Customer Onboarding Sequence",
+    message: "Provisioning completed for tenant workspace 'northwind-trading'",
+    component: "provisioning-service",
+  },
+  {
+    id: "log-005",
+    timestamp: "2026-07-30T10:43:55.000Z",
+    level: "debug",
+    workflowName: "Expense Report Approval",
+    message: "Awaiting manager approval for report #EXP-2026-0847 ($1,340.50)",
+    component: "approval-gate",
+  },
+  {
+    id: "log-006",
+    timestamp: "2026-07-30T10:43:30.000Z",
+    level: "info",
+    workflowName: "Contract Renewal Reminder",
+    message: "Sent renewal reminder to 12 accounts expiring within 30 days",
+    component: "email-dispatcher",
+  },
+  {
+    id: "log-007",
+    timestamp: "2026-07-30T10:42:18.000Z",
+    level: "warn",
+    workflowName: "Inventory Reorder Alert",
+    message: "SKU WH-4421 below reorder threshold (current: 8, threshold: 15)",
+    component: "inventory-monitor",
+  },
+  {
+    id: "log-008",
+    timestamp: "2026-07-30T10:41:50.000Z",
+    level: "error",
+    workflowName: "Invoice Processing Pipeline",
+    message: "Duplicate invoice detected (PO-8834 already processed on 2026-07-28)",
+    component: "dedup-validator",
+  },
+]
