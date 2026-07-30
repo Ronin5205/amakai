@@ -1,15 +1,18 @@
 import type { NodeKind, WorkflowNode } from "@/lib/domain/workflow"
+import { COMPONENT_CATALOG } from "@/lib/design/component-catalog"
+import {
+  getDefaultNodeConfig,
+  getNodeDefinition,
+} from "@/lib/design/node-definitions"
 import { generateAiWorkflowGraph } from "@/lib/design/workflow-graph"
 
-export const NODE_PALETTE: Array<{ kind: NodeKind; label: string; description: string }> = [
-  { kind: "trigger", label: "Trigger", description: "Start the workflow from an event or schedule" },
-  { kind: "sequential", label: "Action", description: "Run a single step in sequence" },
-  { kind: "parallel", label: "Parallel", description: "Run multiple branches at once" },
-  { kind: "conditional", label: "Condition", description: "Branch based on rules or data" },
-  { kind: "loop", label: "Loop", description: "Repeat steps over a collection" },
-  { kind: "approval", label: "Approval", description: "Pause for human review" },
-  { kind: "exception", label: "Exception", description: "Handle errors and fallbacks" },
-]
+export const NODE_PALETTE = COMPONENT_CATALOG.map(
+  ({ kind, label, description }) => ({
+    kind,
+    label,
+    description,
+  })
+)
 
 export function createNodeId() {
   return `node-${crypto.randomUUID()}`
@@ -18,15 +21,15 @@ export function createNodeId() {
 export function createNodeFromKind(
   kind: NodeKind,
   label?: string,
-  config: WorkflowNode["config"] = {}
+  config: WorkflowNode["config"] = getDefaultNodeConfig(kind)
 ): WorkflowNode {
-  const paletteItem = NODE_PALETTE.find((item) => item.kind === kind)
+  const definition = getNodeDefinition(kind)
 
   return {
     id: createNodeId(),
-    label: label ?? paletteItem?.label ?? kind,
+    label: label ?? definition.label,
     kind,
-    config,
+    config: { ...config },
   }
 }
 
@@ -35,6 +38,8 @@ export function cloneTemplateNodes(nodes: WorkflowNode[]): WorkflowNode[] {
     ...node,
     id: createNodeId(),
     config: { ...node.config },
+    metadata: node.metadata ? { ...node.metadata } : undefined,
+    processing: node.processing ? { ...node.processing } : undefined,
   }))
 }
 

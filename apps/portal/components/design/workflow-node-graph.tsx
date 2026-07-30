@@ -13,12 +13,16 @@ import { CanvasWorkflowNode } from "@/components/design/canvas-workflow-node"
 import { useCanvasViewport } from "@/hooks/use-canvas-viewport"
 import {
   ensureNodePositions,
-  getNodePortPosition,
+  getNodePortPositionById,
 } from "@/lib/design/layout-utils"
+import {
+  getNodePortId,
+} from "@/lib/design/node-layout"
 import {
   getCanvasWorldBounds,
   nodeIntersectsRect,
 } from "@/lib/design/canvas-viewport"
+import { CANVAS_DROP_ID } from "@/lib/design/design-hub-types"
 import type { WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 import {
   Empty,
@@ -50,7 +54,12 @@ export interface WorkflowNodeGraphProps {
   onSelectEdge: (edgeId: string) => void
   onSelectNode: (nodeId: string | null, options?: { additive?: boolean }) => void
   onSelectNodes: (nodeIds: string[]) => void
-  onConnectNodes: (source: string, target: string) => void
+  onConnectNodes: (
+    source: string,
+    target: string,
+    sourcePort?: string,
+    targetPort?: string
+  ) => void
   onMoveNodes: (nodeIds: string[], deltaX: number, deltaY: number) => void
   onCopy: () => void
   onPaste: () => void
@@ -69,11 +78,17 @@ type MarqueeState = {
   currentY: number
 }
 
+type ConnectionSource = {
+  nodeId: string
+  portId?: string
+}
+
 function buildPreviewConnectionPath(
   from: WorkflowNode,
-  pointer: { x: number; y: number }
+  pointer: { x: number; y: number },
+  sourcePort?: string
 ) {
-  const start = getNodePortPosition(from, "output")
+  const start = getNodePortPositionById(from, "output", sourcePort)
   const controlOffset = Math.max(48, Math.abs(pointer.x - start.x) / 2)
 
   return `M ${start.x} ${start.y} C ${start.x + controlOffset} ${start.y}, ${pointer.x - controlOffset} ${pointer.y}, ${pointer.x} ${pointer.y}`
@@ -139,15 +154,14 @@ export function WorkflowNodeGraph({
   const [nodeDrag, setNodeDrag] = React.useState<NodeDragState | null>(null)
   const pendingDragRef = React.useRef<NodeDragState | null>(null)
   const dragFrameRef = React.useRef<number | null>(null)
-  const [connectionSource, setConnectionSource] = React.useState<string | null>(
-    null
-  )
+  const [connectionSource, setConnectionSource] =
+    React.useState<ConnectionSource | null>(null)
   const [connectionPreview, setConnectionPreview] = React.useState<{
     x: number
     y: number
   } | null>(null)
 
-  const { setNodeRef, isOver } = useDroppable({ id: "canvas-drop" })
+  const { setNodeRef, isOver } = useDroppable({ id: CANVAS_DROP_ID })
   const positionedNodes = ensureNodePositions(nodes)
   const displayNodes = React.useMemo(
     () => applyNodeDrag(positionedNodes, nodeDrag),
@@ -372,18 +386,31 @@ export function WorkflowNodeGraph({
   const handlePortPointerDown = (
     nodeId: string,
     side: "input" | "output",
-    event: React.PointerEvent<HTMLButtonElement>
+    event: React.PointerEvent<HTMLButtonElement>,
+    portIndex = 0
   ) => {
     event.stopPropagation()
 
+    const node = nodeById.get(nodeId)
+    if (!node) {
+      return
+    }
+
+    const portId = getNodePortId(node, side, portIndex)
+
     if (side === "output") {
-      setConnectionSource(nodeId)
+      setConnectionSource({ nodeId, portId })
       setConnectionPreview(getWorldPoint(event.clientX, event.clientY))
       return
     }
 
-    if (connectionSource && connectionSource !== nodeId) {
-      onConnectNodes(connectionSource, nodeId)
+    if (connectionSource && connectionSource.nodeId !== nodeId) {
+      onConnectNodes(
+        connectionSource.nodeId,
+        nodeId,
+        connectionSource.portId,
+        portId
+      )
       cancelConnection()
     }
   }
@@ -599,7 +626,7 @@ export function WorkflowNodeGraph({
 
                     {connectionSource && connectionPreview
                       ? (() => {
-                          const from = nodeById.get(connectionSource)
+                          const from = nodeById.get(connectionSource.nodeId)
                           if (!from) {
                             return null
                           }
@@ -608,7 +635,8 @@ export function WorkflowNodeGraph({
                             <path
                               d={buildPreviewConnectionPath(
                                 from,
-                                connectionPreview
+                                connectionPreview,
+                                connectionSource.portId
                               )}
                               fill="none"
                               stroke="currentColor"
@@ -627,13 +655,20 @@ export function WorkflowNodeGraph({
                       node={node}
                       zoom={viewport.zoom}
                       isSelected={selectedNodeIds.includes(node.id)}
-                      isConnectionSource={connectionSource === node.id}
+                      isConnectionSource={
+                        connectionSource?.nodeId === node.id
+                      }
+                      connectionSourcePortId={
+                        connectionSource?.nodeId === node.id
+                          ? connectionSource.portId
+                          : undefined
+                      }
                       isConnectionTarget={
                         connectionSource !== null &&
-                        connectionSource !== node.id
+                        connectionSource.nodeId !== node.id
                       }
-                      onPortPointerDown={(side, event) =>
-                        handlePortPointerDown(node.id, side, event)
+                      onPortPointerDown={(side, event, portIndex) =>
+                        handlePortPointerDown(node.id, side, event, portIndex)
                       }
                       onSelect={(additive) => handleNodeSelect(node.id, additive)}
                       onMove={handleNodeMove}

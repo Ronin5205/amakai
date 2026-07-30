@@ -16,6 +16,7 @@ export interface EditorNodeInspectorPanelProps {
   node: WorkflowNode | null
   selectedCount: number
   onLabelChange: (label: string) => void
+  onConfigChange: (key: string, value: unknown) => void
   onRemove: () => void
   className?: string
 }
@@ -53,6 +54,7 @@ export function EditorNodeInspectorPanel({
   node,
   selectedCount,
   onLabelChange,
+  onConfigChange,
   onRemove,
   className,
 }: EditorNodeInspectorPanelProps) {
@@ -140,7 +142,7 @@ export function EditorNodeInspectorPanel({
       ref={panelRef}
       style={{ left: position.x, top: position.y }}
       className={cn(
-        "pointer-events-auto absolute z-30 flex max-h-[min(520px,calc(100%-2rem))] w-[min(calc(100%-1.5rem),320px)] flex-col overflow-hidden rounded-none border bg-background shadow-md",
+        "pointer-events-auto absolute z-30 flex max-h-[min(75vh,calc(100%-1.5rem))] w-[min(calc(100%-1.5rem),340px)] min-h-0 flex-col overflow-hidden rounded-none border bg-background shadow-md",
         isDragging && "select-none",
         className
       )}
@@ -170,12 +172,15 @@ export function EditorNodeInspectorPanel({
           <XIcon />
         </Button>
       </div>
-      <NodeInspector
-        node={node}
-        selectedCount={selectedCount}
-        onLabelChange={onLabelChange}
-        onRemove={onRemove}
-      />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <NodeInspector
+          node={node}
+          selectedCount={selectedCount}
+          onLabelChange={onLabelChange}
+          onConfigChange={onConfigChange}
+          onRemove={onRemove}
+        />
+      </div>
     </div>
   )
 }

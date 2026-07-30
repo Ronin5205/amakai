@@ -1,11 +1,12 @@
 import type { Workflow, WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
+import { clampNodePositionToWorld } from "@/lib/design/canvas-viewport"
 import {
-  CANVAS_NODE_HEIGHT,
-  CANVAS_NODE_WIDTH,
-  clampNodePositionToWorld,
-} from "@/lib/design/canvas-viewport"
+  resolveInputPortId,
+  resolveOutputPortId,
+} from "@/lib/design/node-layout"
 import {
   ensureNodePositions,
+  getNodeDimensions,
   layoutNodesHorizontally,
 } from "@/lib/design/layout-utils"
 import { createNodeFromKind, createNodeId } from "@/lib/design/node-utils"
@@ -26,13 +27,19 @@ export function createEdgeId() {
 export function createEdge(
   source: string,
   target: string,
-  label?: string
+  options?: {
+    label?: string
+    sourcePort?: string
+    targetPort?: string
+  }
 ): WorkflowEdge {
   return {
     id: createEdgeId(),
     source,
     target,
-    label,
+    label: options?.label,
+    sourcePort: options?.sourcePort,
+    targetPort: options?.targetPort,
   }
 }
 
@@ -65,6 +72,8 @@ export function cloneWorkflowGraph(
     source: idMap.get(edge.source) ?? edge.source,
     target: idMap.get(edge.target) ?? edge.target,
     label: edge.label,
+    sourcePort: edge.sourcePort,
+    targetPort: edge.targetPort,
   }))
 
   return { nodes: clonedNodes, edges: clonedEdges }
@@ -95,14 +104,16 @@ export function offsetWorkflowGraphToAnchor(
   const minX = Math.min(...positioned.map((node) => node.position?.x ?? 0))
   const minY = Math.min(...positioned.map((node) => node.position?.y ?? 0))
   const maxX = Math.max(
-    ...positioned.map(
-      (node) => (node.position?.x ?? 0) + CANVAS_NODE_WIDTH
-    )
+    ...positioned.map((node) => {
+      const { width } = getNodeDimensions(node)
+      return (node.position?.x ?? 0) + width
+    })
   )
   const maxY = Math.max(
-    ...positioned.map(
-      (node) => (node.position?.y ?? 0) + CANVAS_NODE_HEIGHT
-    )
+    ...positioned.map((node) => {
+      const { height } = getNodeDimensions(node)
+      return (node.position?.y ?? 0) + height
+    })
   )
 
   const centerX = (minX + maxX) / 2
@@ -117,7 +128,7 @@ export function offsetWorkflowGraphToAnchor(
 
       return {
         ...node,
-        position: clampNodePositionToWorld(x, y),
+        position: clampNodePositionToWorld(x, y, node),
       }
     }),
     edges: laidOut.edges,
@@ -172,25 +183,47 @@ export function removeEdgesForNodes(
 export function edgeExists(
   edges: WorkflowEdge[],
   source: string,
-  target: string
+  target: string,
+  sourcePort?: string,
+  targetPort?: string
 ) {
   return edges.some(
-    (edge) => edge.source === source && edge.target === target
+    (edge) =>
+      edge.source === source &&
+      edge.target === target &&
+      edge.sourcePort === sourcePort &&
+      edge.targetPort === targetPort
   )
 }
 
 export function sanitizeManualEdge(
   edges: WorkflowEdge[],
-  source: string,
-  target: string
+  sourceNode: WorkflowNode,
+  targetNode: WorkflowNode,
+  sourcePort?: string,
+  targetPort?: string
 ): WorkflowEdge | null {
-  if (source === target) {
+  if (sourceNode.id === targetNode.id) {
     return null
   }
 
-  if (edgeExists(edges, source, target)) {
+  const resolvedSourcePort = resolveOutputPortId(sourceNode, sourcePort)
+  const resolvedTargetPort = resolveInputPortId(targetNode, targetPort)
+
+  if (
+    edgeExists(
+      edges,
+      sourceNode.id,
+      targetNode.id,
+      resolvedSourcePort,
+      resolvedTargetPort
+    )
+  ) {
     return null
   }
 
-  return createEdge(source, target)
+  return createEdge(sourceNode.id, targetNode.id, {
+    sourcePort: resolvedSourcePort,
+    targetPort: resolvedTargetPort,
+  })
 }

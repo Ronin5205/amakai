@@ -3,12 +3,9 @@
 import * as React from "react"
 
 import {
-  CANVAS_NODE_HEIGHT,
-  CANVAS_NODE_WIDTH,
-} from "@/lib/design/canvas-viewport"
-import {
   clampNodePosition,
   ensureNodePositions,
+  getNodeDimensions,
 } from "@/lib/design/layout-utils"
 import {
   cloneWorkflowGraph,
@@ -30,8 +27,12 @@ import {
   parseTemplateDragId,
 } from "@/lib/design/node-utils"
 import type { WorkflowTemplate } from "@/lib/domain/template"
-import type { ResourcesPanelTab } from "@/lib/design/design-hub-types"
-import type { Workflow, WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
+import { CANVAS_DROP_ID, type ResourcesPanelTab } from "@/lib/design/design-hub-types"
+import type {
+  Workflow,
+  WorkflowEdge,
+  WorkflowNode,
+} from "@/lib/domain/workflow"
 
 export type { ResourcesPanelTab } from "@/lib/design/design-hub-types"
 
@@ -218,8 +219,27 @@ export function useDesignHubState(initialWorkflow: Workflow) {
   )
 
   const connectNodes = React.useCallback(
-    (source: string, target: string) => {
-      const edge = sanitizeManualEdge(workflowRef.current.edges, source, target)
+    (
+      source: string,
+      target: string,
+      sourcePort?: string,
+      targetPort?: string
+    ) => {
+      const current = workflowRef.current
+      const sourceNode = current.nodes.find((node) => node.id === source)
+      const targetNode = current.nodes.find((node) => node.id === target)
+
+      if (!sourceNode || !targetNode) {
+        return
+      }
+
+      const edge = sanitizeManualEdge(
+        current.edges,
+        sourceNode,
+        targetNode,
+        sourcePort,
+        targetPort
+      )
       if (!edge) {
         return
       }
@@ -251,7 +271,8 @@ export function useDesignHubState(initialWorkflow: Workflow) {
 
           const next = clampNodePosition(
             node.position.x + deltaX,
-            node.position.y + deltaY
+            node.position.y + deltaY,
+            node
           )
           return { ...node, position: next }
         }),
@@ -270,6 +291,27 @@ export function useDesignHubState(initialWorkflow: Workflow) {
       updatedAt: new Date().toISOString(),
     }))
   }, [])
+
+  const updateNodeConfig = React.useCallback(
+    (nodeId: string, key: string, value: unknown) => {
+      setWorkflow((current) => ({
+        ...current,
+        nodes: current.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                config: {
+                  ...node.config,
+                  [key]: value,
+                },
+              }
+            : node
+        ),
+        updatedAt: new Date().toISOString(),
+      }))
+    },
+    []
+  )
 
   const updateWorkflowName = React.useCallback((name: string) => {
     const trimmed = name.trim()
@@ -418,16 +460,18 @@ export function useDesignHubState(initialWorkflow: Workflow) {
       templates: WorkflowTemplate[],
       dropPosition?: { x: number; y: number }
     ) => {
-      if (!overId) {
+      if (overId !== CANVAS_DROP_ID) {
         return
       }
 
       const paletteKind = parsePaletteDragId(activeId)
       if (paletteKind) {
         const newNode = createNodeFromKind(paletteKind)
+        const { width, height } = getNodeDimensions(newNode)
         const position = clampNodePosition(
-          (dropPosition?.x ?? 0) - CANVAS_NODE_WIDTH / 2,
-          (dropPosition?.y ?? 0) - CANVAS_NODE_HEIGHT / 2
+          (dropPosition?.x ?? 0) - width / 2,
+          (dropPosition?.y ?? 0) - height / 2,
+          newNode
         )
         addNodeAtPosition({ ...newNode, position }, { select: false })
         return
@@ -455,6 +499,7 @@ export function useDesignHubState(initialWorkflow: Workflow) {
     connectNodes,
     moveNodes,
     updateNodeLabel,
+    updateNodeConfig,
     updateWorkflowName,
     removeSelectedNodes,
     removeSelectedEdge,

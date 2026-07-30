@@ -12,9 +12,10 @@ import {
 
 import { StatusBadge } from "@/components/portal/status-badge"
 import {
-  CANVAS_NODE_HEIGHT,
-  CANVAS_NODE_WIDTH,
-} from "@/lib/design/layout-utils"
+  getNodeDimensions,
+  getPortYOffset,
+} from "@/lib/design/node-layout"
+import { getNodeDefinition } from "@/lib/design/node-definitions"
 import type { NodeKind, WorkflowNode } from "@/lib/domain/workflow"
 import { cn } from "@amakai/shared/lib/utils"
 
@@ -32,6 +33,7 @@ export interface CanvasWorkflowNodeProps {
   node: WorkflowNode
   isSelected: boolean
   isConnectionSource: boolean
+  connectionSourcePortId?: string
   isConnectionTarget: boolean
   zoom: number
   onSelect: (additive: boolean) => void
@@ -39,7 +41,8 @@ export interface CanvasWorkflowNodeProps {
   onMoveEnd: () => void
   onPortPointerDown: (
     side: "input" | "output",
-    event: React.PointerEvent<HTMLButtonElement>
+    event: React.PointerEvent<HTMLButtonElement>,
+    portIndex?: number
   ) => void
 }
 
@@ -47,6 +50,7 @@ export function CanvasWorkflowNode({
   node,
   isSelected,
   isConnectionSource,
+  connectionSourcePortId,
   isConnectionTarget,
   zoom,
   onSelect,
@@ -55,6 +59,10 @@ export function CanvasWorkflowNode({
   onPortPointerDown,
 }: CanvasWorkflowNodeProps) {
   const Icon = NODE_ICONS[node.kind]
+  const definition = getNodeDefinition(node.kind)
+  const inputPorts = definition.inputs
+  const outputPorts = definition.outputs
+  const { width, height } = getNodeDimensions(node)
   const x = node.position?.x ?? 0
   const y = node.position?.y ?? 0
 
@@ -95,40 +103,55 @@ export function CanvasWorkflowNode({
     <div
       className="absolute touch-none select-none"
       style={{
-        width: CANVAS_NODE_WIDTH,
-        height: CANVAS_NODE_HEIGHT,
+        width,
+        height,
         transform: `translate(${x}px, ${y}px)`,
       }}
     >
-      <button
-        type="button"
-        aria-label={`Connect input to ${node.label}`}
-        className={cn(
-          "absolute top-1/2 -left-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
-          isConnectionTarget
-            ? "border-primary bg-primary/20"
-            : "border-muted-foreground/40 hover:border-primary"
-        )}
-        onPointerDown={(event) => onPortPointerDown("input", event)}
-      />
+      {inputPorts.map((port, index) => (
+        <button
+          key={port.id}
+          type="button"
+          title={port.label}
+          aria-label={`Connect ${port.label} to ${node.label}`}
+          className={cn(
+            "absolute -left-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
+            isConnectionTarget
+              ? "border-primary bg-primary/20"
+              : "border-muted-foreground/40 hover:border-primary"
+          )}
+          style={{ top: getPortYOffset(index, inputPorts.length, height) }}
+          onPointerDown={(event) => onPortPointerDown("input", event, index)}
+        />
+      ))}
 
-      <button
-        type="button"
-        aria-label={`Connect output from ${node.label}`}
-        className={cn(
-          "absolute top-1/2 -right-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
-          isConnectionSource
-            ? "border-primary bg-primary/20"
-            : "border-primary/50 hover:border-primary"
-        )}
-        onPointerDown={(event) => onPortPointerDown("output", event)}
-      />
+      {outputPorts.map((port, index) => {
+        const isPortConnectionSource =
+          isConnectionSource && connectionSourcePortId === port.id
+
+        return (
+          <button
+            key={port.id}
+            type="button"
+            title={port.label}
+            aria-label={`Connect ${port.label} from ${node.label}`}
+            className={cn(
+              "absolute -right-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
+              isPortConnectionSource
+                ? "border-primary bg-primary/20"
+                : "border-primary/50 hover:border-primary"
+            )}
+            style={{ top: getPortYOffset(index, outputPorts.length, height) }}
+            onPointerDown={(event) => onPortPointerDown("output", event, index)}
+          />
+        )
+      })}
 
       <div
         className={cn(
           "relative flex h-full cursor-grab items-center gap-3 rounded-none border bg-background px-3 shadow-sm active:cursor-grabbing",
           isSelected && "border-primary ring-2 ring-primary/20",
-          isConnectionSource && "border-primary/60"
+          isConnectionSource && connectionSourcePortId && "border-primary/60"
         )}
         onPointerDown={handleBodyPointerDown}
       >

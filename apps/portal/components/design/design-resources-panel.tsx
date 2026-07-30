@@ -1,6 +1,9 @@
 "use client"
 
+import { useDroppable } from "@dnd-kit/core"
+
 import { DesignResourcesContent } from "@/components/design/design-resources-content"
+import { RESOURCES_PANEL_DROP_ID } from "@/lib/design/design-hub-types"
 import type { ResourcesPanelTab } from "@/lib/design/design-hub-types"
 import type { WorkflowTemplate } from "@/lib/domain/template"
 import {
@@ -30,6 +33,11 @@ export function DesignResourcesPanel({
   templates,
   onApplyTemplate,
 }: DesignResourcesPanelProps) {
+  const { setNodeRef } = useDroppable({
+    id: RESOURCES_PANEL_DROP_ID,
+    disabled: !open,
+  })
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -37,19 +45,21 @@ export function DesignResourcesPanel({
         showOverlay={false}
         className="w-full gap-0 p-0 sm:max-w-md"
       >
-        <SheetHeader className="border-b px-4 py-4">
-          <SheetTitle>Resources</SheetTitle>
-          <SheetDescription>
-            Drag components or templates onto the canvas.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <DesignResourcesContent
-            activeTab={activeTab}
-            onTabChange={onTabChange}
-            templates={templates}
-            onApplyTemplate={onApplyTemplate}
-          />
+        <div ref={setNodeRef} className="flex h-full min-h-0 flex-col">
+          <SheetHeader className="border-b px-4 py-4">
+            <SheetTitle>Resources</SheetTitle>
+            <SheetDescription>
+              Drag components or templates onto the canvas.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <DesignResourcesContent
+              activeTab={activeTab}
+              onTabChange={onTabChange}
+              templates={templates}
+              onApplyTemplate={onApplyTemplate}
+            />
+          </div>
         </div>
       </SheetContent>
     </Sheet>

@@ -7,8 +7,10 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
@@ -31,7 +33,9 @@ import {
   CANVAS_WORLD_WIDTH,
 } from "@/lib/design/canvas-viewport"
 import {
+  CANVAS_DROP_ID,
   parseDesignPanelParam,
+  RESOURCES_PANEL_DROP_ID,
   resourcesTabFromParam,
   type DesignPanelParam,
   type ResourcesPanelTab,
@@ -45,6 +49,26 @@ import type {
 import type { Environment } from "@/lib/domain/deployment"
 import type { WorkflowTemplate } from "@/lib/domain/template"
 import type { Workflow } from "@/lib/domain/workflow"
+
+const designHubCollisionDetection: CollisionDetection = (args) => {
+  const pointerHits = pointerWithin(args)
+
+  const resourcesHit = pointerHits.find(
+    (collision) => collision.id === RESOURCES_PANEL_DROP_ID
+  )
+  if (resourcesHit) {
+    return [resourcesHit]
+  }
+
+  const canvasHit = pointerHits.find(
+    (collision) => collision.id === CANVAS_DROP_ID
+  )
+  if (canvasHit) {
+    return [canvasHit]
+  }
+
+  return closestCenter(args)
+}
 import {
   Sheet,
   SheetContent,
@@ -134,6 +158,7 @@ export function DesignHubView({
     connectNodes,
     moveNodes,
     updateNodeLabel,
+    updateNodeConfig,
     updateWorkflowName,
     removeSelectedNodes,
     deleteSelection,
@@ -355,7 +380,7 @@ export function DesignHubView({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={designHubCollisionDetection}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
@@ -404,6 +429,11 @@ export function DesignHubView({
           onLabelChange={(label) => {
             if (selectedNode) {
               updateNodeLabel(selectedNode.id, label)
+            }
+          }}
+          onConfigChange={(key, value) => {
+            if (selectedNode) {
+              updateNodeConfig(selectedNode.id, key, value)
             }
           }}
           onRemove={removeSelectedNodes}

@@ -1,7 +1,12 @@
 import type { WorkflowNode } from "@/lib/domain/workflow"
+import {
+  CANVAS_NODE_MIN_HEIGHT,
+  CANVAS_NODE_MIN_WIDTH,
+  getNodeDimensions,
+} from "@/lib/design/node-layout"
 
-export const CANVAS_NODE_WIDTH = 220
-export const CANVAS_NODE_HEIGHT = 72
+export const CANVAS_NODE_WIDTH = CANVAS_NODE_MIN_WIDTH
+export const CANVAS_NODE_HEIGHT = CANVAS_NODE_MIN_HEIGHT
 export const CANVAS_NODE_ORIGIN_X = 80
 export const CANVAS_NODE_ORIGIN_Y = 160
 
@@ -50,7 +55,8 @@ export function getNodesContentBounds(nodes: WorkflowNode[]): CanvasBounds {
   if (nodes.length === 0) {
     const minX = CANVAS_NODE_ORIGIN_X - CANVAS_WORLD_PADDING
     const minY = CANVAS_NODE_ORIGIN_Y - CANVAS_WORLD_PADDING
-    const maxX = CANVAS_NODE_ORIGIN_X + CANVAS_NODE_WIDTH + CANVAS_WORLD_PADDING
+    const maxX =
+      CANVAS_NODE_ORIGIN_X + CANVAS_NODE_WIDTH + CANVAS_WORLD_PADDING
     const maxY =
       CANVAS_NODE_ORIGIN_Y + CANVAS_NODE_HEIGHT + CANVAS_WORLD_PADDING
 
@@ -67,10 +73,16 @@ export function getNodesContentBounds(nodes: WorkflowNode[]): CanvasBounds {
   const minX = Math.min(...nodes.map((node) => node.position?.x ?? 0))
   const minY = Math.min(...nodes.map((node) => node.position?.y ?? 0))
   const maxX = Math.max(
-    ...nodes.map((node) => (node.position?.x ?? 0) + CANVAS_NODE_WIDTH)
+    ...nodes.map((node) => {
+      const { width } = getNodeDimensions(node)
+      return (node.position?.x ?? 0) + width
+    })
   )
   const maxY = Math.max(
-    ...nodes.map((node) => (node.position?.y ?? 0) + CANVAS_NODE_HEIGHT)
+    ...nodes.map((node) => {
+      const { height } = getNodeDimensions(node)
+      return (node.position?.y ?? 0) + height
+    })
   )
 
   const paddedMinX = minX - CANVAS_WORLD_PADDING
@@ -214,20 +226,26 @@ export function nodeIntersectsRect(
 ) {
   const nx = node.position?.x ?? 0
   const ny = node.position?.y ?? 0
+  const { width, height } = getNodeDimensions(node)
 
   return (
     nx < rect.x + rect.width &&
-    nx + CANVAS_NODE_WIDTH > rect.x &&
+    nx + width > rect.x &&
     ny < rect.y + rect.height &&
-    ny + CANVAS_NODE_HEIGHT > rect.y
+    ny + height > rect.y
   )
 }
 
-export function clampNodePositionToWorld(x: number, y: number) {
-  const maxX =
-    CANVAS_WORLD_WIDTH - CANVAS_NODE_WIDTH - CANVAS_NODE_EDGE_PADDING
-  const maxY =
-    CANVAS_WORLD_HEIGHT - CANVAS_NODE_HEIGHT - CANVAS_NODE_EDGE_PADDING
+export function clampNodePositionToWorld(
+  x: number,
+  y: number,
+  node?: WorkflowNode
+) {
+  const { width, height } = node
+    ? getNodeDimensions(node)
+    : { width: CANVAS_NODE_WIDTH, height: CANVAS_NODE_HEIGHT }
+  const maxX = CANVAS_WORLD_WIDTH - width - CANVAS_NODE_EDGE_PADDING
+  const maxY = CANVAS_WORLD_HEIGHT - height - CANVAS_NODE_EDGE_PADDING
 
   return {
     x: Math.min(maxX, Math.max(CANVAS_NODE_EDGE_PADDING, x)),

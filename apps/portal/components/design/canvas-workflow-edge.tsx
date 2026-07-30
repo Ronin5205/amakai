@@ -23,7 +23,7 @@ export function CanvasWorkflowEdge({
   isSelected,
   onSelect,
 }: CanvasWorkflowEdgeProps) {
-  const path = buildEdgeConnectionPath(from, to)
+  const path = buildEdgeConnectionPath(from, to, edge)
 
   const handlePointerDown = (event: React.PointerEvent<SVGPathElement>) => {
     if (event.button !== 0) {
