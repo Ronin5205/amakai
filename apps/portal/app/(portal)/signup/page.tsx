@@ -1,7 +1,8 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ArrowLeftIcon, EnvelopeSimpleIcon } from "@phosphor-icons/react/ssr"
+import { ArrowLeftIcon } from "@phosphor-icons/react/ssr"
 
+import { SignUpForm } from "@/components/auth/sign-up-form"
 import { portal } from "@/lib/content"
 import { Badge } from "@amakai/shared/components/ui/badge"
 import { Button } from "@amakai/shared/components/ui/button"
@@ -34,18 +35,19 @@ export default function SignupPage() {
             {copy.description}
           </CardDescription>
         </CardHeader>
-        <CardFooter className="flex-col items-stretch gap-2">
-          <Button
-            size="lg"
-            render={<a href={portal.emailCta.href} />}
-            nativeButton={false}
-          >
-            <EnvelopeSimpleIcon data-icon="inline-start" />
-            {portal.emailCta.label}
-          </Button>
+
+        <div className="px-6 pb-2">
+          <SignUpForm
+            crossLinkPrompt={copy.crossLinkPrompt}
+            crossLinkLabel={copy.crossLink.label}
+          />
+        </div>
+
+        <CardFooter>
           <Button
             variant="outline"
             size="lg"
+            className="w-full"
             render={<Link href={portal.backCta.href} />}
             nativeButton={false}
           >
@@ -54,16 +56,6 @@ export default function SignupPage() {
           </Button>
         </CardFooter>
       </Card>
-
-      <p className="text-center text-xs text-muted-foreground">
-        {copy.crossLinkPrompt}{" "}
-        <Link
-          href={copy.crossLink.href}
-          className="text-foreground underline underline-offset-4"
-        >
-          {copy.crossLink.label}
-        </Link>
-      </p>
     </div>
   )
 }
