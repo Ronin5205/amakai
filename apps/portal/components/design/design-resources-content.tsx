@@ -2,6 +2,8 @@
 
 import { NodePalettePanel } from "@/components/design/node-palette-panel"
 import { TemplatesPanel } from "@/components/design/templates-panel"
+import type { ConnectionDraft } from "@/lib/design/connection-draft"
+import type { WorkflowNode } from "@/lib/domain/workflow"
 import type { WorkflowTemplate } from "@/lib/domain/template"
 import {
   Tabs,
@@ -18,6 +20,9 @@ export interface DesignResourcesContentProps {
   onTabChange: (tab: ResourcesPanelTab) => void
   templates: WorkflowTemplate[]
   onApplyTemplate: (template: WorkflowTemplate) => void
+  connectionDraft?: ConnectionDraft | null
+  connectionAnchorNode?: WorkflowNode | null
+  onSelectComponent?: (catalogItemId: string) => void
 }
 
 export function DesignResourcesContent({
@@ -25,6 +30,9 @@ export function DesignResourcesContent({
   onTabChange,
   templates,
   onApplyTemplate,
+  connectionDraft = null,
+  connectionAnchorNode = null,
+  onSelectComponent,
 }: DesignResourcesContentProps) {
   return (
     <Tabs
@@ -58,7 +66,11 @@ export function DesignResourcesContent({
         value="components"
         className="min-h-0 flex-1 overflow-hidden"
       >
-        <NodePalettePanel />
+        <NodePalettePanel
+          connectionDraft={connectionDraft}
+          anchorNode={connectionAnchorNode}
+          onSelectComponent={onSelectComponent}
+        />
       </TabsContent>
       <TabsContent value="templates" className="min-h-0 flex-1 overflow-hidden">
         <TemplatesPanel templates={templates} onApply={onApplyTemplate} />

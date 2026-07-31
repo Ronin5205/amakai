@@ -23,6 +23,7 @@ import {
   PuzzlePieceIcon,
   RocketLaunchIcon,
   ScrollIcon,
+  TableIcon,
   TagIcon,
   TreeStructureIcon,
   UsersIcon,
@@ -57,6 +58,11 @@ export const portalNavigation: PortalNavItem[] = [
         title: "Workflows",
         href: "/design/workflows",
         icon: TreeStructureIcon,
+      },
+      {
+        title: "Tables",
+        href: "/design/tables",
+        icon: TableIcon,
       },
     ],
   },
@@ -266,6 +272,13 @@ export function isNavItemActive(
       return (
         pathname === "/design/workflows" ||
         pathname.startsWith("/design/workflow-editor")
+      )
+    }
+
+    if (hrefPath === "/design/tables") {
+      return (
+        pathname === "/design/tables" ||
+        pathname.startsWith("/design/tables/")
       )
     }
 

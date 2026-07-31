@@ -7,6 +7,7 @@ import { NodeConfigFields } from "@/components/design/node-config-fields"
 import { StatusBadge } from "@/components/portal/status-badge"
 import { getCatalogItemId, resolveNodeDefinition } from "@/lib/design/resolve-node-definition"
 import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
+import type { DataTableSummary } from "@/lib/domain/data-table"
 import { Button } from "@amakai/shared/components/ui/button"
 import {
   Field,
@@ -19,6 +20,7 @@ export interface NodeInspectorProps {
   node: WorkflowNode | null
   workflow: Workflow
   selectedCount: number
+  dataTables?: DataTableSummary[]
   onLabelChange: (label: string) => void
   onConfigChange: (key: string, value: unknown) => void
   onRemove: () => void
@@ -28,6 +30,7 @@ export function NodeInspector({
   node,
   workflow,
   selectedCount,
+  dataTables,
   onLabelChange,
   onConfigChange,
   onRemove,
@@ -105,6 +108,7 @@ export function NodeInspector({
                 fields={definition.configSchema}
                 values={node.config}
                 idPrefix={`${node.id}-config`}
+                dataTables={dataTables}
                 onChange={onConfigChange}
               />
             ) : null}

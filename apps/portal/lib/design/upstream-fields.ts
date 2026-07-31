@@ -196,8 +196,23 @@ export function normalizeSwitchCases(
   })
 }
 
+function asTableColumnMapRows(value: unknown) {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.filter(
+    (entry): entry is { columnKey: string; sourceField: string } =>
+      typeof entry === "object" &&
+      entry !== null &&
+      typeof (entry as { columnKey: string }).columnKey === "string" &&
+      typeof (entry as { sourceField: string }).sourceField === "string"
+  )
+}
+
 export {
   asEditRows,
   asRenameRows,
   asStringArray,
+  asTableColumnMapRows,
 }

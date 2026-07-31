@@ -7,13 +7,21 @@ import {
   FieldRenameTableEditor,
   OutputFieldsEditor,
   SwitchRulesEditor,
+  TableColumnMapEditor,
+  TableSelectEditor,
   UpstreamFieldSelect,
 } from "@/components/design/node-config-custom-fields"
 import type { ConfigSchemaField, WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 import {
+  buildDefaultColumnMappings,
+  findDataTableSummary,
+  type DataTableSummary,
+} from "@/lib/domain/data-table"
+import {
   asEditRows,
   asRenameRows,
   asStringArray,
+  asTableColumnMapRows,
   buildDefaultSwitchCases,
   normalizeSwitchCases,
   resolveUpstreamFieldOptions,
@@ -42,6 +50,7 @@ export interface NodeConfigFieldsProps {
   fields: ConfigSchemaField[]
   values: Record<string, unknown>
   idPrefix: string
+  dataTables?: DataTableSummary[]
   onChange: (key: string, value: unknown) => void
 }
 
@@ -112,6 +121,7 @@ function ConfigField({
   nodes,
   edges,
   values,
+  dataTables,
   onChange,
 }: {
   field: ConfigSchemaField
@@ -121,6 +131,7 @@ function ConfigField({
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
   values: Record<string, unknown>
+  dataTables?: DataTableSummary[]
   onChange: (value: unknown) => void
 }) {
   const upstreamOptions = React.useMemo(
@@ -166,6 +177,30 @@ function ConfigField({
         <SwitchRulesEditor
           idPrefix={id}
           value={rules}
+          onChange={onChange}
+        />
+      )
+    }
+
+    case "table-select":
+      return (
+        <TableSelectEditor
+          id={id}
+          value={typeof value === "string" ? value : ""}
+          tables={dataTables ?? []}
+          onChange={onChange}
+        />
+      )
+
+    case "table-column-map": {
+      const tableName = typeof values.tableName === "string" ? values.tableName : ""
+      const selectedTable = findDataTableSummary(dataTables ?? [], tableName)
+      return (
+        <TableColumnMapEditor
+          idPrefix={id}
+          columns={selectedTable?.columns ?? []}
+          value={asTableColumnMapRows(value)}
+          upstreamOptions={upstreamOptions}
           onChange={onChange}
         />
       )
@@ -265,11 +300,18 @@ export function NodeConfigFields({
   fields,
   values,
   idPrefix,
+  dataTables,
   onChange,
 }: NodeConfigFieldsProps) {
-  const visibleFields = fields.filter(
-    (field) => field.key !== "catalogItemId" && field.type !== "json"
-  )
+  const visibleFields = fields.filter((field) => {
+    if (field.key === "catalogItemId" || field.type === "json") {
+      return false
+    }
+    if (field.type === "table-column-map" && values.operation !== "write") {
+      return false
+    }
+    return true
+  })
 
   if (visibleFields.length === 0) {
     return null
@@ -277,6 +319,19 @@ export function NodeConfigFields({
 
   const handleChange = (field: ConfigSchemaField, next: unknown) => {
     onChange(field.key, next)
+
+    if (field.key === "tableName" && typeof next === "string") {
+      const table = findDataTableSummary(dataTables ?? [], next)
+      if (table) {
+        onChange(
+          "columnMappings",
+          buildDefaultColumnMappings(
+            table.columns,
+            asTableColumnMapRows(values.columnMappings)
+          )
+        )
+      }
+    }
 
     if (field.key === "caseCount" || field.key === "includeDefaultOutput") {
       const caseCount = Math.max(
@@ -322,10 +377,17 @@ export function NodeConfigFields({
               nodes={nodes}
               edges={edges}
               values={values}
+              dataTables={dataTables}
               onChange={(next) => handleChange(field, next)}
             />
             {field.description ? (
               <FieldDescription>{field.description}</FieldDescription>
+            ) : null}
+            {field.type === "table-column-map" &&
+            resolveUpstreamFieldOptions(nodes, edges, node.id).length === 0 ? (
+              <FieldDescription>
+                Connect a previous node to map its output into table columns.
+              </FieldDescription>
             ) : null}
             {field.type === "upstream-field" &&
             resolveUpstreamFieldOptions(nodes, edges, node.id).length === 0 ? (

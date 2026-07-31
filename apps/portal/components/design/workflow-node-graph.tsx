@@ -23,6 +23,7 @@ import {
   nodeIntersectsRect,
 } from "@/lib/design/canvas-viewport"
 import { CANVAS_DROP_ID } from "@/lib/design/design-hub-types"
+import type { ConnectionDraft } from "@/lib/design/connection-draft"
 import type { WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 import type { NodeExecutionState } from "@/lib/engine/types"
 import {
@@ -42,6 +43,10 @@ import { cn } from "@amakai/shared/lib/utils"
 export type CanvasViewportApi = {
   getWorldPoint: (clientX: number, clientY: number) => { x: number; y: number }
   getViewportCenter: () => { x: number; y: number }
+}
+
+export type WorkflowGraphControls = {
+  cancelConnectionDraft: () => void
 }
 
 export interface WorkflowNodeGraphProps {
@@ -69,6 +74,13 @@ export interface WorkflowNodeGraphProps {
   onUndo: () => void
   onRedo: () => void
   onRegisterViewport?: (api: CanvasViewportApi) => void
+  onRegisterGraphControls?: (controls: WorkflowGraphControls) => void
+  onConnectionDraftCanvasClick?: (
+    world: { x: number; y: number },
+    draft: ConnectionDraft,
+    screen: { clientX: number; clientY: number }
+  ) => void
+  onConnectionDraftCancel?: () => void
   fullBleed?: boolean
   nodeExecutionStates?: Record<string, NodeExecutionState>
   activeEdgeId?: string | null
@@ -81,20 +93,20 @@ type MarqueeState = {
   currentY: number
 }
 
-type ConnectionSource = {
-  nodeId: string
-  portId?: string
-}
+type ConnectionSource = ConnectionDraft
 
 function buildPreviewConnectionPath(
-  from: WorkflowNode,
+  node: WorkflowNode,
   pointer: { x: number; y: number },
-  sourcePort?: string
+  side: "input" | "output",
+  portId?: string
 ) {
-  const start = getNodePortPositionById(from, "output", sourcePort)
-  const controlOffset = Math.max(48, Math.abs(pointer.x - start.x) / 2)
+  const anchor = getNodePortPositionById(node, side, portId)
+  const start = side === "output" ? anchor : pointer
+  const end = side === "output" ? pointer : anchor
+  const controlOffset = Math.max(48, Math.abs(end.x - start.x) / 2)
 
-  return `M ${start.x} ${start.y} C ${start.x + controlOffset} ${start.y}, ${pointer.x - controlOffset} ${pointer.y}, ${pointer.x} ${pointer.y}`
+  return `M ${start.x} ${start.y} C ${start.x + controlOffset} ${start.y}, ${end.x - controlOffset} ${end.y}, ${end.x} ${end.y}`
 }
 
 type NodeDragState = {
@@ -145,6 +157,9 @@ export function WorkflowNodeGraph({
   onUndo,
   onRedo,
   onRegisterViewport,
+  onRegisterGraphControls,
+  onConnectionDraftCanvasClick,
+  onConnectionDraftCancel,
   fullBleed = false,
   nodeExecutionStates = {},
   activeEdgeId = null,
@@ -165,6 +180,8 @@ export function WorkflowNodeGraph({
     x: number
     y: number
   } | null>(null)
+  const [connectionPreviewLocked, setConnectionPreviewLocked] =
+    React.useState(false)
 
   const { setNodeRef, isOver } = useDroppable({ id: CANVAS_DROP_ID })
   const positionedNodes = ensureNodePositions(nodes)
@@ -233,7 +250,7 @@ export function WorkflowNodeGraph({
   }, [getViewportCenterWorldPoint, getWorldPoint, onRegisterViewport])
 
   React.useEffect(() => {
-    if (!connectionSource) {
+    if (!connectionSource || connectionPreviewLocked) {
       return
     }
 
@@ -243,12 +260,18 @@ export function WorkflowNodeGraph({
 
     window.addEventListener("pointermove", onPointerMove)
     return () => window.removeEventListener("pointermove", onPointerMove)
-  }, [connectionSource, getWorldPoint])
+  }, [connectionPreviewLocked, connectionSource, getWorldPoint])
 
   const cancelConnection = React.useCallback(() => {
     setConnectionSource(null)
     setConnectionPreview(null)
-  }, [])
+    setConnectionPreviewLocked(false)
+    onConnectionDraftCancel?.()
+  }, [onConnectionDraftCancel])
+
+  React.useEffect(() => {
+    onRegisterGraphControls?.({ cancelConnectionDraft: cancelConnection })
+  }, [cancelConnection, onRegisterGraphControls])
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -404,12 +427,30 @@ export function WorkflowNodeGraph({
     const portId = getNodePortId(node, side, portIndex)
 
     if (side === "output") {
-      setConnectionSource({ nodeId, portId })
+      if (
+        connectionSource?.side === "input" &&
+        connectionSource.nodeId !== nodeId
+      ) {
+        onConnectNodes(
+          nodeId,
+          connectionSource.nodeId,
+          portId,
+          connectionSource.portId
+        )
+        cancelConnection()
+        return
+      }
+
+      setConnectionSource({ nodeId, portId, side: "output" })
       setConnectionPreview(getWorldPoint(event.clientX, event.clientY))
+      setConnectionPreviewLocked(false)
       return
     }
 
-    if (connectionSource && connectionSource.nodeId !== nodeId) {
+    if (
+      connectionSource?.side === "output" &&
+      connectionSource.nodeId !== nodeId
+    ) {
       onConnectNodes(
         connectionSource.nodeId,
         nodeId,
@@ -417,7 +458,12 @@ export function WorkflowNodeGraph({
         portId
       )
       cancelConnection()
+      return
     }
+
+    setConnectionSource({ nodeId, portId, side: "input" })
+    setConnectionPreview(getWorldPoint(event.clientX, event.clientY))
+    setConnectionPreviewLocked(false)
   }
 
   const handleCanvasPointerDown = (
@@ -483,6 +529,19 @@ export function WorkflowNodeGraph({
           .filter((node) => nodeIntersectsRect(node, { x, y, width, height }))
           .map((node) => node.id)
         onSelectNodes(selected)
+      } else if (connectionSource) {
+        const lockedPoint = {
+          x: currentMarquee.currentX,
+          y: currentMarquee.currentY,
+        }
+        setConnectionPreview(lockedPoint)
+        setConnectionPreviewLocked(true)
+        onConnectionDraftCanvasClick?.(
+          lockedPoint,
+          connectionSource,
+          { clientX: event.clientX, clientY: event.clientY }
+        )
+        onSelectNode(null)
       } else {
         onSelectNode(null)
       }
@@ -642,6 +701,7 @@ export function WorkflowNodeGraph({
                               d={buildPreviewConnectionPath(
                                 from,
                                 connectionPreview,
+                                connectionSource.side,
                                 connectionSource.portId
                               )}
                               fill="none"
@@ -670,8 +730,19 @@ export function WorkflowNodeGraph({
                           ? connectionSource.portId
                           : undefined
                       }
+                      connectionSourceSide={
+                        connectionSource?.nodeId === node.id
+                          ? connectionSource.side
+                          : undefined
+                      }
                       isConnectionTarget={
                         connectionSource !== null &&
+                        connectionSource.side === "output" &&
+                        connectionSource.nodeId !== node.id
+                      }
+                      isOutputConnectionTarget={
+                        connectionSource !== null &&
+                        connectionSource.side === "input" &&
                         connectionSource.nodeId !== node.id
                       }
                       onPortPointerDown={(side, event, portIndex) =>

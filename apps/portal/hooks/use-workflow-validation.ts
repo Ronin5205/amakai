@@ -198,7 +198,7 @@ export function useWorkflowValidation(workflow: Workflow) {
     setStatus("running")
     setPanelOpen(true)
 
-    const result = runPlaygroundValidation(
+    const result = await runPlaygroundValidation(
       workflow.nodes,
       workflow.edges ?? []
     )

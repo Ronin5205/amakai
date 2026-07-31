@@ -18,8 +18,22 @@ import {
   asEditRows,
   asRenameRows,
   asStringArray,
+  asTableColumnMapRows,
   normalizeSwitchCases,
 } from "@/lib/design/upstream-fields"
+import {
+  playgroundDataTableReadAction,
+  playgroundDataTableWriteAction,
+} from "@/lib/actions/playground-data-table-actions"
+import {
+  applyFieldEditsToPayload,
+  applyRenamesToPayload,
+  buildDataTableRowFromPayload,
+  buildTriggerPlaygroundPayload,
+  countPopulatedRowFields,
+  getDataTableOperation,
+  mergePayload,
+} from "@/lib/engine/playground-data-table"
 import type { WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 
 function isNonEmptyString(value: unknown) {
@@ -116,10 +130,80 @@ function passThrough(
   }
 }
 
-function processNodeInPlayground(
+async function processDataTableNode(
   node: WorkflowNode,
   payload: unknown
-): NodeProcessResult {
+): Promise<NodeProcessResult> {
+  const tableName = String(node.config.tableName ?? "")
+  if (!isNonEmptyString(tableName)) {
+    return { ok: false, message: "Data Table is missing a selected table" }
+  }
+
+  const operation = getDataTableOperation(node)
+
+  if (operation === "write") {
+    const mappings = asTableColumnMapRows(node.config.columnMappings)
+    if (
+      mappings.length === 0 ||
+      !mappings.some((row) => isNonEmptyString(row.sourceField))
+    ) {
+      return {
+        ok: false,
+        message:
+          "Data Table write requires at least one column mapped from the previous node",
+      }
+    }
+
+    const rowData = buildDataTableRowFromPayload(payload, mappings)
+    if (countPopulatedRowFields(rowData) === 0) {
+      return {
+        ok: false,
+        message:
+          "Data Table write could not resolve any values from the previous node. Check column mappings and upstream output fields.",
+      }
+    }
+
+    const result = await playgroundDataTableWriteAction(tableName, rowData)
+
+    if ("error" in result) {
+      return { ok: false, message: result.error }
+    }
+
+    return passThrough(
+      node,
+      mergePayload(payload, {
+        dataTableName: result.tableName,
+        dataTableOperation: "write",
+        dataTableRow: result.row.data,
+      }),
+      `Wrote 1 row (${countPopulatedRowFields(rowData)} field(s)) to "${result.tableName}" (playground)`
+    )
+  }
+
+  const result = await playgroundDataTableReadAction(tableName)
+
+  if ("error" in result) {
+    return { ok: false, message: result.error }
+  }
+
+  const rows = result.rows.map((row) => row.data)
+
+  return passThrough(
+    node,
+    mergePayload(payload, {
+      dataTableName: result.tableName,
+      dataTableOperation: "read",
+      dataTableRows: rows,
+      dataTableRowCount: rows.length,
+    }),
+    `Read ${rows.length} row(s) from "${result.tableName}" (playground)`
+  )
+}
+
+async function processNodeInPlayground(
+  node: WorkflowNode,
+  payload: unknown
+): Promise<NodeProcessResult> {
   const catalogItemId = getCatalogItemId(node)
 
   if (catalogItemId === "exception.stop-and-error") {
@@ -148,11 +232,7 @@ function processNodeInPlayground(
       return {
         ok: true,
         outputPort: resolveOutputPortId(node) ?? "main-out",
-        payload: {
-          ...(typeof payload === "object" && payload !== null ? payload : {}),
-          triggeredAt: new Date().toISOString(),
-          triggerType,
-        },
+        payload: buildTriggerPlaygroundPayload(node),
         message: `Trigger fired (${triggerType})`,
       }
     }
@@ -176,20 +256,32 @@ function processNodeInPlayground(
       }
 
       if (catalogItemId?.startsWith("action.")) {
-        if (catalogItemId === "action.data-table" && !isNonEmptyString(node.config.tableName)) {
-          return { ok: false, message: "Data Table is missing a table name" }
+        if (catalogItemId === "action.data-table") {
+          return processDataTableNode(node, payload)
         }
         if (catalogItemId === "action.edit-fields") {
           const edits = asEditRows(node.config.fieldEdits)
           if (edits.length === 0 || edits.some((row) => !row.name.trim() || !row.sourceField)) {
             return { ok: false, message: "Edit Fields requires mapped field rows" }
           }
+
+          return passThrough(
+            node,
+            applyFieldEditsToPayload(payload, node),
+            "Applied field mappings (playground)"
+          )
         }
         if (catalogItemId === "action.rename-keys") {
           const renames = asRenameRows(node.config.renames)
           if (renames.length === 0 || renames.some((row) => !row.fromField || !row.toField.trim())) {
             return { ok: false, message: "Rename Keys requires complete rename rows" }
           }
+
+          return passThrough(
+            node,
+            applyRenamesToPayload(payload, node),
+            "Renamed fields (playground)"
+          )
         }
         if (
           (catalogItemId === "action.aggregate" && !isNonEmptyString(node.config.groupByField)) ||
@@ -423,10 +515,10 @@ function validateGraphStructure(
   return null
 }
 
-export function runPlaygroundValidation(
+export async function runPlaygroundValidation(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[] = []
-): PlaygroundRunResult {
+): Promise<PlaygroundRunResult> {
   logCounter = 0
   const steps: PlaygroundStep[] = []
 
@@ -498,7 +590,7 @@ export function runPlaygroundValidation(
       )
     )
 
-    const result = processNodeInPlayground(node, current.payload)
+    const result = await processNodeInPlayground(node, current.payload)
     const definition = resolveNodeDefinition(node)
 
     if (!result.ok) {

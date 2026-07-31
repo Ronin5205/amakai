@@ -3,8 +3,10 @@
 import { useDroppable } from "@dnd-kit/core"
 
 import { DesignResourcesContent } from "@/components/design/design-resources-content"
+import type { ConnectionDraft } from "@/lib/design/connection-draft"
 import { RESOURCES_PANEL_DROP_ID } from "@/lib/design/design-hub-types"
 import type { ResourcesPanelTab } from "@/lib/design/design-hub-types"
+import type { WorkflowNode } from "@/lib/domain/workflow"
 import type { WorkflowTemplate } from "@/lib/domain/template"
 import {
   Sheet,
@@ -23,6 +25,9 @@ export interface DesignResourcesPanelProps {
   onTabChange: (tab: ResourcesPanelTab) => void
   templates: WorkflowTemplate[]
   onApplyTemplate: (template: WorkflowTemplate) => void
+  connectionDraft?: ConnectionDraft | null
+  connectionAnchorNode?: WorkflowNode | null
+  onSelectComponent?: (catalogItemId: string) => void
 }
 
 export function DesignResourcesPanel({
@@ -32,6 +37,9 @@ export function DesignResourcesPanel({
   onTabChange,
   templates,
   onApplyTemplate,
+  connectionDraft = null,
+  connectionAnchorNode = null,
+  onSelectComponent,
 }: DesignResourcesPanelProps) {
   const { setNodeRef } = useDroppable({
     id: RESOURCES_PANEL_DROP_ID,
@@ -49,7 +57,9 @@ export function DesignResourcesPanel({
           <SheetHeader className="border-b px-4 py-4">
             <SheetTitle>Resources</SheetTitle>
             <SheetDescription>
-              Drag components or templates onto the canvas.
+              {connectionDraft
+                ? "Select a compatible component to place and connect on the canvas."
+                : "Drag components or templates onto the canvas."}
             </SheetDescription>
           </SheetHeader>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -58,6 +68,9 @@ export function DesignResourcesPanel({
               onTabChange={onTabChange}
               templates={templates}
               onApplyTemplate={onApplyTemplate}
+              connectionDraft={connectionDraft}
+              connectionAnchorNode={connectionAnchorNode}
+              onSelectComponent={onSelectComponent}
             />
           </div>
         </div>

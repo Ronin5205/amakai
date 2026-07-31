@@ -1,14 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { DotsSixVerticalIcon, XIcon } from "@phosphor-icons/react"
+import {
+  ArrowsOutSimpleIcon,
+  CornersInIcon,
+  CornersOutIcon,
+  DotsSixVerticalIcon,
+  XIcon,
+} from "@phosphor-icons/react"
 
 import { NodeInspector } from "@/components/design/node-inspector"
 import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
+import type { DataTableSummary } from "@/lib/domain/data-table"
 import { Button } from "@amakai/shared/components/ui/button"
 import { cn } from "@amakai/shared/lib/utils"
 
 const DEFAULT_POSITION = { x: 12, y: 120 }
+
+type InspectorSizeMode = "default" | "expanded" | "maximized"
 
 export interface EditorNodeInspectorPanelProps {
   open: boolean
@@ -16,6 +25,7 @@ export interface EditorNodeInspectorPanelProps {
   workflow: Workflow
   node: WorkflowNode | null
   selectedCount: number
+  dataTables?: DataTableSummary[]
   onLabelChange: (label: string) => void
   onConfigChange: (key: string, value: unknown) => void
   onRemove: () => void
@@ -55,6 +65,7 @@ export function EditorNodeInspectorPanel({
   workflow,
   node,
   selectedCount,
+  dataTables,
   onLabelChange,
   onConfigChange,
   onRemove,
@@ -64,23 +75,43 @@ export function EditorNodeInspectorPanel({
   const dragRef = React.useRef<DragState | null>(null)
   const [position, setPosition] = React.useState(DEFAULT_POSITION)
   const [isDragging, setIsDragging] = React.useState(false)
+  const [sizeMode, setSizeMode] = React.useState<InspectorSizeMode>("default")
+  const restoredPositionRef = React.useRef(DEFAULT_POSITION)
+  const restoredSizeModeRef = React.useRef<InspectorSizeMode>("default")
 
-  const clampToContainer = React.useCallback((x: number, y: number) => {
-    const panel = panelRef.current
-    const parent = panel?.offsetParent as HTMLElement | null
-    return clampPosition(x, y, panel, parent)
-  }, [])
+  const isMaximized = sizeMode === "maximized"
+  const isExpanded = sizeMode === "expanded"
+
+  React.useEffect(() => {
+    if (!open) {
+      setSizeMode("default")
+      setPosition(DEFAULT_POSITION)
+    }
+  }, [open])
+
+  const clampToContainer = React.useCallback(
+    (x: number, y: number) => {
+      if (isMaximized) {
+        return { x, y }
+      }
+
+      const panel = panelRef.current
+      const parent = panel?.offsetParent as HTMLElement | null
+      return clampPosition(x, y, panel, parent)
+    },
+    [isMaximized]
+  )
 
   React.useLayoutEffect(() => {
-    if (!open) {
+    if (!open || isMaximized) {
       return
     }
 
     setPosition((current) => clampToContainer(current.x, current.y))
-  }, [clampToContainer, open])
+  }, [clampToContainer, isMaximized, open, sizeMode])
 
   React.useEffect(() => {
-    if (!open) {
+    if (!open || isMaximized) {
       return
     }
 
@@ -90,10 +121,26 @@ export function EditorNodeInspectorPanel({
 
     window.addEventListener("resize", onResize)
     return () => window.removeEventListener("resize", onResize)
-  }, [clampToContainer, open])
+  }, [clampToContainer, isMaximized, open, sizeMode])
+
+  const handleToggleExpanded = () => {
+    setSizeMode((current) => (current === "expanded" ? "default" : "expanded"))
+  }
+
+  const handleToggleMaximized = () => {
+    if (isMaximized) {
+      setSizeMode(restoredSizeModeRef.current)
+      setPosition(restoredPositionRef.current)
+      return
+    }
+
+    restoredPositionRef.current = position
+    restoredSizeModeRef.current = sizeMode
+    setSizeMode("maximized")
+  }
 
   const handleDragPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) {
+    if (isMaximized || event.button !== 0) {
       return
     }
 
@@ -142,9 +189,17 @@ export function EditorNodeInspectorPanel({
   return (
     <div
       ref={panelRef}
-      style={{ left: position.x, top: position.y }}
+      style={isMaximized ? undefined : { left: position.x, top: position.y }}
       className={cn(
-        "pointer-events-auto absolute z-30 flex max-h-[min(75vh,calc(100%-1.5rem))] w-[min(calc(100%-1.5rem),340px)] min-h-0 flex-col overflow-hidden rounded-none border bg-background shadow-md",
+        "pointer-events-auto absolute z-30 flex min-h-0 flex-col overflow-hidden border bg-background shadow-md",
+        isMaximized
+          ? "inset-y-0 right-0 max-h-none w-[min(100%,32rem)] rounded-none border-y-0 border-r-0"
+          : cn(
+              "rounded-none",
+              isExpanded
+                ? "max-h-[min(90vh,calc(100%-1.5rem))] w-[min(calc(100%-1.5rem),32rem)]"
+                : "max-h-[min(75vh,calc(100%-1.5rem))] w-[min(calc(100%-1.5rem),340px)]"
+            ),
         isDragging && "select-none",
         className
       )}
@@ -152,7 +207,7 @@ export function EditorNodeInspectorPanel({
       <div
         className={cn(
           "flex shrink-0 touch-none items-center gap-1 border-b px-1 py-1",
-          isDragging ? "cursor-grabbing" : "cursor-grab"
+          !isMaximized && (isDragging ? "cursor-grabbing" : "cursor-grab")
         )}
         onPointerDown={handleDragPointerDown}
         onPointerMove={handleDragPointerMove}
@@ -160,9 +215,40 @@ export function EditorNodeInspectorPanel({
         onPointerCancel={endDrag}
       >
         <div className="flex flex-1 items-center px-1 text-muted-foreground">
-          <DotsSixVerticalIcon className="size-4 shrink-0" aria-hidden />
-          <span className="sr-only">Drag to move inspector</span>
+          {!isMaximized ? (
+            <>
+              <DotsSixVerticalIcon className="size-4 shrink-0" aria-hidden />
+              <span className="sr-only">Drag to move inspector</span>
+            </>
+          ) : (
+            <span className="px-1 text-xs font-medium text-foreground">
+              Node inspector
+            </span>
+          )}
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={handleToggleExpanded}
+          aria-label={isExpanded || isMaximized ? "Use compact inspector width" : "Expand inspector width"}
+          aria-pressed={isExpanded || isMaximized}
+          disabled={isMaximized}
+        >
+          <ArrowsOutSimpleIcon />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={handleToggleMaximized}
+          aria-label={isMaximized ? "Restore inspector size" : "Maximize inspector"}
+          aria-pressed={isMaximized}
+        >
+          {isMaximized ? <CornersInIcon /> : <CornersOutIcon />}
+        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -179,6 +265,7 @@ export function EditorNodeInspectorPanel({
           node={node}
           workflow={workflow}
           selectedCount={selectedCount}
+          dataTables={dataTables}
           onLabelChange={onLabelChange}
           onConfigChange={onConfigChange}
           onRemove={onRemove}

@@ -25,6 +25,8 @@ import { EditorFloatingChrome } from "@/components/design/editor-floating-chrome
 import { EditorNodeInspectorPanel } from "@/components/design/editor-node-inspector-panel"
 import { ValidationPanel } from "@/components/design/validation-panel"
 import { WorkflowNodeGraph } from "@/components/design/workflow-node-graph"
+import type { WorkflowGraphControls } from "@/components/design/workflow-node-graph"
+import type { ConnectionDraft, PendingConnectionPlacement } from "@/lib/design/connection-draft"
 import { useDesignHubState } from "@/hooks/use-design-hub-state"
 import { useWorkflowValidation } from "@/hooks/use-workflow-validation"
 import { useWorkflowAutoSave } from "@/hooks/use-workflow-auto-save"
@@ -42,7 +44,11 @@ import {
   type DesignPanelParam,
   type ResourcesPanelTab,
 } from "@/lib/design/design-hub-types"
-import { NODE_PALETTE, parsePaletteDragId } from "@/lib/design/node-utils"
+import {
+  NODE_PALETTE,
+  parsePaletteDragId,
+  resolveCatalogItemFromDragId,
+} from "@/lib/design/node-utils"
 import { getComponentCatalogItemById } from "@/lib/design/component-catalog"
 import type {
   ClarificationQuestion,
@@ -52,6 +58,7 @@ import type {
 import type { Environment } from "@/lib/domain/deployment"
 import type { WorkflowTemplate } from "@/lib/domain/template"
 import type { Workflow } from "@/lib/domain/workflow"
+import type { DataTableSummary } from "@/lib/domain/data-table"
 
 const designHubCollisionDetection: CollisionDetection = (args) => {
   const pointerHits = pointerWithin(args)
@@ -88,6 +95,7 @@ export interface DesignHubViewProps {
   planningStages: PlanningStage[]
   questions: ClarificationQuestion[]
   templates: WorkflowTemplate[]
+  dataTables?: DataTableSummary[]
 }
 
 export function DesignHubView({
@@ -98,6 +106,7 @@ export function DesignHubView({
   planningStages,
   questions,
   templates,
+  dataTables = [],
 }: DesignHubViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -133,6 +142,9 @@ export function DesignHubView({
     x: CANVAS_WORLD_WIDTH / 2,
     y: CANVAS_WORLD_HEIGHT / 2,
   }))
+  const graphControlsRef = React.useRef<WorkflowGraphControls | null>(null)
+  const [pendingConnectionPlacement, setPendingConnectionPlacement] =
+    React.useState<PendingConnectionPlacement | null>(null)
 
   const handleRegisterViewport = React.useCallback(
     (api: {
@@ -141,6 +153,13 @@ export function DesignHubView({
     }) => {
       getWorldPointRef.current = api.getWorldPoint
       getViewportCenterRef.current = api.getViewportCenter
+    },
+    []
+  )
+
+  const handleRegisterGraphControls = React.useCallback(
+    (controls: WorkflowGraphControls) => {
+      graphControlsRef.current = controls
     },
     []
   )
@@ -159,6 +178,7 @@ export function DesignHubView({
     selectNodes,
     selectEdge,
     connectNodes,
+    placeConnectedNode,
     moveNodes,
     updateNodeLabel,
     updateNodeConfig,
@@ -282,6 +302,10 @@ export function DesignHubView({
     setResourcesOpen(open)
     if (!open) {
       syncPanelParam(null)
+      if (pendingConnectionPlacement) {
+        setPendingConnectionPlacement(null)
+        graphControlsRef.current?.cancelConnectionDraft()
+      }
     }
   }
 
@@ -386,18 +410,98 @@ export function DesignHubView({
     setDeployOpen(true)
   }
 
+  const handleConnectionDraftCancel = React.useCallback(() => {
+    setPendingConnectionPlacement(null)
+  }, [])
+
+  const handleConnectionDraftCanvasClick = React.useCallback(
+    (
+      world: { x: number; y: number },
+      draft: ConnectionDraft
+    ) => {
+      const anchorNode = workflow.nodes.find((node) => node.id === draft.nodeId)
+      if (!anchorNode) {
+        graphControlsRef.current?.cancelConnectionDraft()
+        return
+      }
+
+      setPendingConnectionPlacement({
+        draft,
+        worldPoint: world,
+      })
+      setResourcesTab("components")
+      setResourcesOpen(true)
+      syncPanelParam("components")
+    },
+    [syncPanelParam, workflow.nodes]
+  )
+
+  const handleConnectionComponentSelect = React.useCallback(
+    (catalogItemId: string) => {
+      if (!pendingConnectionPlacement) {
+        return
+      }
+
+      const placed = placeConnectedNode(
+        catalogItemId,
+        pendingConnectionPlacement.worldPoint,
+        pendingConnectionPlacement.draft
+      )
+
+      setPendingConnectionPlacement(null)
+      graphControlsRef.current?.cancelConnectionDraft()
+      setResourcesOpen(false)
+      syncPanelParam(null)
+
+      if (placed) {
+        setInspectorOpen(true)
+      }
+    },
+    [pendingConnectionPlacement, placeConnectedNode, syncPanelParam]
+  )
+
+  const connectionAnchorNode = React.useMemo(
+    () =>
+      pendingConnectionPlacement
+        ? workflow.nodes.find(
+            (node) => node.id === pendingConnectionPlacement.draft.nodeId
+          ) ?? null
+        : null,
+    [pendingConnectionPlacement, workflow.nodes]
+  )
+
   const onDragEnd = (event: DragEndEvent) => {
     setActiveDragLabel(null)
+    const activeId = String(event.active.id)
+    const overId = event.over ? String(event.over.id) : null
+
+    if (
+      pendingConnectionPlacement &&
+      overId === CANVAS_DROP_ID
+    ) {
+      const catalogItem = resolveCatalogItemFromDragId(activeId)
+      if (catalogItem) {
+        const placed = placeConnectedNode(
+          catalogItem.id,
+          pendingConnectionPlacement.worldPoint,
+          pendingConnectionPlacement.draft
+        )
+        setPendingConnectionPlacement(null)
+        graphControlsRef.current?.cancelConnectionDraft()
+        setResourcesOpen(false)
+        syncPanelParam(null)
+        if (placed) {
+          setInspectorOpen(true)
+        }
+        return
+      }
+    }
+
     const world = getWorldPointRef.current(
       pointerRef.current.x,
       pointerRef.current.y
     )
-    handleDragEnd(
-      String(event.active.id),
-      event.over ? String(event.over.id) : null,
-      templates,
-      world
-    )
+    handleDragEnd(activeId, overId, templates, world)
   }
 
   return (
@@ -429,6 +533,9 @@ export function DesignHubView({
           onUndo={undo}
           onRedo={redo}
           onRegisterViewport={handleRegisterViewport}
+          onRegisterGraphControls={handleRegisterGraphControls}
+          onConnectionDraftCanvasClick={handleConnectionDraftCanvasClick}
+          onConnectionDraftCancel={handleConnectionDraftCancel}
           nodeExecutionStates={validationNodeStates}
           activeEdgeId={validationActiveEdgeId}
         />
@@ -456,6 +563,7 @@ export function DesignHubView({
           workflow={workflow}
           node={selectedNode}
           selectedCount={selectedNodeIds.length}
+          dataTables={dataTables}
           onLabelChange={(label) => {
             if (selectedNode) {
               updateNodeLabel(selectedNode.id, label)
@@ -477,6 +585,11 @@ export function DesignHubView({
         onTabChange={handleResourcesTabChange}
         templates={templates}
         onApplyTemplate={handleApplyTemplate}
+        connectionDraft={pendingConnectionPlacement?.draft ?? null}
+        connectionAnchorNode={connectionAnchorNode}
+        onSelectComponent={
+          pendingConnectionPlacement ? handleConnectionComponentSelect : undefined
+        }
       />
 
       <DeleteWorkflowDialog

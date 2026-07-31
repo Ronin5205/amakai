@@ -31,6 +31,8 @@ export type ConfigFieldType =
   | "field-edit-table"
   | "switch-rules"
   | "output-fields"
+  | "table-select"
+  | "table-column-map"
   /** @internal Legacy — never surfaced in the inspector; nodes exchange JSON at runtime. */
   | "json"
 

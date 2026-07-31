@@ -9,6 +9,16 @@ function fieldRef(nodeId: string, fieldName: string) {
   return `${nodeId}.${fieldName}`
 }
 
+function tableColumnMappings(
+  sourceNodeId: string,
+  columns: Array<{ columnKey: string; field: string }>
+) {
+  return columns.map(({ columnKey, field }) => ({
+    columnKey,
+    sourceField: fieldRef(sourceNodeId, field),
+  }))
+}
+
 function templateNode(
   id: string,
   catalogItemId: string,
@@ -531,7 +541,55 @@ const waitAndStopGraph = buildGraph(
   ]
 )
 
+const DEMO_CONTACTS_TABLE = "demo_contacts"
+
+const dataTableDemoNodes = {
+  trigger: templateNode("tmpl-dt-1", "trigger.workflow", "New contact", {
+    triggerType: "manual",
+    outputFields: ["name", "email", "status"],
+  }),
+  write: templateNode("tmpl-dt-2", "action.data-table", "Save contact", {
+    operation: "write",
+    tableName: DEMO_CONTACTS_TABLE,
+    columnMappings: tableColumnMappings("tmpl-dt-1", [
+      { columnKey: "name", field: "name" },
+      { columnKey: "email", field: "email" },
+      { columnKey: "status", field: "status" },
+    ]),
+  }),
+  read: templateNode("tmpl-dt-3", "action.data-table", "Load all contacts", {
+    operation: "read",
+    tableName: DEMO_CONTACTS_TABLE,
+  }),
+}
+
+const dataTableDemoGraph = buildGraph(
+  [
+    dataTableDemoNodes.trigger,
+    dataTableDemoNodes.write,
+    dataTableDemoNodes.read,
+  ],
+  chainMain([
+    dataTableDemoNodes.trigger,
+    dataTableDemoNodes.write,
+    dataTableDemoNodes.read,
+  ])
+)
+
 export const templateCatalog: WorkflowTemplate[] = [
+  {
+    id: "tmpl-data-table-demo",
+    name: "Data Table Read & Write",
+    description:
+      'Create a table named "demo_contacts" with columns name, email, and status (Design → Tables), then validate. Writes the trigger payload to the table and reads all rows back.',
+    category: "Data",
+    nodeCount: dataTableDemoGraph.nodes.length,
+    usageCount: 0,
+    tags: ["data-table", "read", "write", "demo"],
+    source: "provider",
+    nodes: dataTableDemoGraph.nodes,
+    edges: dataTableDemoGraph.edges,
+  },
   {
     id: "tmpl-invoice",
     name: "Invoice Processing",

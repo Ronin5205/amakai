@@ -71,7 +71,9 @@ export interface CanvasWorkflowNodeProps {
   executionState?: NodeExecutionState
   isConnectionSource: boolean
   connectionSourcePortId?: string
+  connectionSourceSide?: "input" | "output"
   isConnectionTarget: boolean
+  isOutputConnectionTarget?: boolean
   zoom: number
   onSelect: (additive: boolean) => void
   onMove: (nodeId: string, deltaX: number, deltaY: number) => void
@@ -89,7 +91,9 @@ export function CanvasWorkflowNode({
   executionState = "idle",
   isConnectionSource,
   connectionSourcePortId,
+  connectionSourceSide = "output",
   isConnectionTarget,
+  isOutputConnectionTarget = false,
   zoom,
   onSelect,
   onMove,
@@ -146,7 +150,13 @@ export function CanvasWorkflowNode({
         transform: `translate(${x}px, ${y}px)`,
       }}
     >
-      {inputPorts.map((port, index) => (
+      {inputPorts.map((port, index) => {
+        const isPortConnectionSource =
+          isConnectionSource &&
+          connectionSourceSide === "input" &&
+          connectionSourcePortId === port.id
+
+        return (
         <PortTooltip
           key={port.id}
           port={port}
@@ -158,15 +168,18 @@ export function CanvasWorkflowNode({
             aria-label={`Connect ${port.label} to ${node.label}`}
             className={cn(
               "absolute -left-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
-              isConnectionTarget
+              isPortConnectionSource
                 ? "border-primary bg-primary/20"
-                : "border-muted-foreground/40 hover:border-primary"
+                : isConnectionTarget
+                  ? "border-primary bg-primary/20"
+                  : "border-muted-foreground/40 hover:border-primary"
             )}
             style={{ top: getPortYOffset(index, inputPorts.length, height) }}
             onPointerDown={(event) => onPortPointerDown("input", event, index)}
           />
         </PortTooltip>
-      ))}
+        )
+      })}
 
       {outputPorts.map((port, index) => {
         const isPortConnectionSource =
@@ -186,7 +199,9 @@ export function CanvasWorkflowNode({
                 "absolute -right-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
                 isPortConnectionSource
                   ? "border-primary bg-primary/20"
-                  : "border-primary/50 hover:border-primary"
+                  : isOutputConnectionTarget
+                    ? "border-primary bg-primary/20"
+                    : "border-primary/50 hover:border-primary"
               )}
               style={{ top: getPortYOffset(index, outputPorts.length, height) }}
               onPointerDown={(event) => onPortPointerDown("output", event, index)}

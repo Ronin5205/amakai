@@ -154,8 +154,16 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
       {
         key: "tableName",
         label: "Table",
-        type: "string",
+        type: "table-select",
         required: true,
+        description: "Select a table by name from Design → Tables.",
+      },
+      {
+        key: "columnMappings",
+        label: "Column mappings",
+        type: "table-column-map",
+        description:
+          "For write operations, map each table column to a field from the previous node.",
       },
     ],
   },

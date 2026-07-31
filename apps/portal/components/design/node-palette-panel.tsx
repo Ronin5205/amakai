@@ -9,7 +9,10 @@ import {
   getComponentCatalogGroups,
   type ComponentCatalogItem,
 } from "@/lib/design/component-catalog"
+import { filterCatalogForConnectionDraft } from "@/lib/design/connection-placement"
+import type { ConnectionDraft } from "@/lib/design/connection-draft"
 import { paletteDragId } from "@/lib/design/node-utils"
+import type { WorkflowNode } from "@/lib/domain/workflow"
 import {
   Accordion,
   AccordionContent,
@@ -19,7 +22,13 @@ import {
 import { Input } from "@amakai/shared/components/ui/input"
 import { cn } from "@amakai/shared/lib/utils"
 
-function DraggablePaletteItem({ item }: { item: ComponentCatalogItem }) {
+function DraggablePaletteItem({
+  item,
+  onSelect,
+}: {
+  item: ComponentCatalogItem
+  onSelect?: (catalogItemId: string) => void
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: paletteDragId(item.id),
     data: { catalogItemId: item.id, kind: item.kind },
@@ -30,10 +39,20 @@ function DraggablePaletteItem({ item }: { item: ComponentCatalogItem }) {
       ref={setNodeRef}
       className={cn(
         "flex items-start gap-2 rounded-none border bg-background px-2 py-2 touch-none",
-        isDragging && "opacity-50"
+        isDragging && "opacity-50",
+        onSelect && "cursor-pointer hover:border-primary hover:bg-accent/40"
       )}
       {...attributes}
       {...listeners}
+      onClick={() => onSelect?.(item.id)}
+      onKeyDown={(event) => {
+        if (onSelect && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault()
+          onSelect(item.id)
+        }
+      }}
+      role={onSelect ? "button" : undefined}
+      tabIndex={onSelect ? 0 : undefined}
     >
       <DotsSixVerticalIcon className="mt-0.5 shrink-0 text-muted-foreground" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -46,24 +65,67 @@ function DraggablePaletteItem({ item }: { item: ComponentCatalogItem }) {
   )
 }
 
-export function NodePalettePanel() {
+export interface NodePalettePanelProps {
+  connectionDraft?: ConnectionDraft | null
+  anchorNode?: WorkflowNode | null
+  onSelectComponent?: (catalogItemId: string) => void
+}
+
+export function NodePalettePanel({
+  connectionDraft = null,
+  anchorNode = null,
+  onSelectComponent,
+}: NodePalettePanelProps) {
   const [query, setQuery] = React.useState("")
   const groups = React.useMemo(() => getComponentCatalogGroups(query), [query])
   const [openCategories, setOpenCategories] = React.useState<string[]>(
     BASE_COMPONENT_CATEGORY_IDS
   )
 
+  const filteredGroups = React.useMemo(() => {
+    if (!connectionDraft || !anchorNode) {
+      return groups
+    }
+
+    const compatibleItems = filterCatalogForConnectionDraft(
+      connectionDraft,
+      anchorNode,
+      query
+    )
+    const compatibleIds = new Set(compatibleItems.map((item) => item.id))
+
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => compatibleIds.has(item.id)),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [anchorNode, connectionDraft, groups, query])
+
   React.useEffect(() => {
     if (query.trim()) {
-      setOpenCategories(groups.map((group) => group.id))
+      setOpenCategories(filteredGroups.map((group) => group.id))
       return
     }
 
     setOpenCategories(BASE_COMPONENT_CATEGORY_IDS)
-  }, [groups, query])
+  }, [filteredGroups, query])
+
+  const placementHint =
+    connectionDraft?.side === "output"
+      ? "Choose a component to connect after the selected node."
+      : connectionDraft?.side === "input"
+        ? "Choose a component to connect before the selected node."
+        : null
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {placementHint ? (
+        <div className="shrink-0 border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {placementHint}
+        </div>
+      ) : null}
+
       <div className="shrink-0 border-b p-3">
         <div className="relative">
           <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -78,7 +140,7 @@ export function NodePalettePanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {groups.length > 0 ? (
+        {filteredGroups.length > 0 ? (
           <Accordion
             value={openCategories}
             onValueChange={(value) =>
@@ -86,7 +148,7 @@ export function NodePalettePanel() {
             }
             className="border-b border-border"
           >
-            {groups.map((group) => (
+            {filteredGroups.map((group) => (
               <AccordionItem key={group.id} value={group.id}>
                 <AccordionTrigger className="px-3 py-3 hover:no-underline">
                   <div className="flex min-w-0 flex-1 items-center justify-between gap-2 pe-2">
@@ -104,7 +166,11 @@ export function NodePalettePanel() {
                 <AccordionContent className="px-3 pb-3">
                   <div className="flex flex-col gap-2">
                     {group.items.map((item) => (
-                      <DraggablePaletteItem key={item.id} item={item} />
+                      <DraggablePaletteItem
+                        key={item.id}
+                        item={item}
+                        onSelect={onSelectComponent}
+                      />
                     ))}
                   </div>
                 </AccordionContent>
@@ -113,7 +179,9 @@ export function NodePalettePanel() {
           </Accordion>
         ) : (
           <p className="p-4 text-center text-xs text-muted-foreground">
-            No components match your search.
+            {connectionDraft
+              ? "No compatible components match your search."
+              : "No components match your search."}
           </p>
         )}
       </div>

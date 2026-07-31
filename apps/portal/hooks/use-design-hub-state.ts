@@ -7,6 +7,8 @@ import {
   ensureNodePositions,
   getNodeDimensions,
 } from "@/lib/design/layout-utils"
+import { buildConnectedNodePlacement } from "@/lib/design/connection-placement"
+import type { ConnectionDraft } from "@/lib/design/connection-draft"
 import {
   cloneWorkflowGraph,
   generateAiWorkflowGraph,
@@ -254,6 +256,44 @@ export function useDesignHubState(initialWorkflow: Workflow) {
     [recordHistory]
   )
 
+  const placeConnectedNode = React.useCallback(
+    (
+      catalogItemId: string,
+      worldPoint: { x: number; y: number },
+      draft: ConnectionDraft
+    ) => {
+      const current = workflowRef.current
+      const anchorNode = current.nodes.find((node) => node.id === draft.nodeId)
+      if (!anchorNode) {
+        return false
+      }
+
+      const placement = buildConnectedNodePlacement(
+        catalogItemId,
+        worldPoint,
+        draft,
+        anchorNode,
+        current.edges
+      )
+
+      if (!placement) {
+        return false
+      }
+
+      recordHistory()
+      setWorkflow((current) => ({
+        ...current,
+        nodes: [...current.nodes, placement.node],
+        edges: [...current.edges, placement.edge],
+        updatedAt: new Date().toISOString(),
+      }))
+      setSelectedEdgeId(null)
+      setSelectedNodeIds([placement.node.id])
+      return true
+    },
+    [recordHistory]
+  )
+
   const moveNodes = React.useCallback(
     (nodeIds: string[], deltaX: number, deltaY: number) => {
       if (deltaX === 0 && deltaY === 0) {
@@ -497,6 +537,7 @@ export function useDesignHubState(initialWorkflow: Workflow) {
     selectNodes,
     selectEdge,
     connectNodes,
+    placeConnectedNode,
     moveNodes,
     updateNodeLabel,
     updateNodeConfig,

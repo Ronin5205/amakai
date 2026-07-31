@@ -1,7 +1,11 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { PlusIcon, TrashIcon } from "@phosphor-icons/react"
+
+import type { DataTableColumn, DataTableSummary, TableColumnMapRow } from "@/lib/domain/data-table"
+import { buildDefaultColumnMappings } from "@/lib/domain/data-table"
 
 import type {
   FieldEditRow,
@@ -361,3 +365,200 @@ export function SwitchRulesEditor({
 }
 
 export { UpstreamFieldSelect }
+
+export function TableSelectEditor({
+  id,
+  value,
+  tables,
+  onChange,
+}: {
+  id: string
+  value: string
+  tables: DataTableSummary[]
+  onChange: (value: string) => void
+}) {
+  const items = React.useMemo(
+    () => [
+      { label: "Select a table…", value: null },
+      ...tables.map((table) => ({
+        label: table.name,
+        value: table.name,
+      })),
+    ],
+    [tables]
+  )
+
+  const selectedTable = React.useMemo(() => {
+    if (!value) {
+      return null
+    }
+    const normalized = value.trim().toLowerCase()
+    return (
+      tables.find((table) => table.name.trim().toLowerCase() === normalized) ??
+      null
+    )
+  }, [tables, value])
+
+  if (tables.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-xs text-muted-foreground">
+          No tables yet. Create one under Design → Tables.
+        </p>
+        <Button variant="outline" size="sm" render={<Link href="/design/tables" />}>
+          <PlusIcon data-icon="inline-start" />
+          Create table
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Select
+        items={items}
+        value={value || null}
+        onValueChange={(next) => onChange(typeof next === "string" ? next : "")}
+      >
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false} side="bottom">
+          <SelectGroup>
+            {items.map((item) => (
+              <SelectItem key={item.value ?? "__empty__"} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+
+      {selectedTable && selectedTable.columns.length > 0 ? (
+        <TableColumnsPreview columns={selectedTable.columns} />
+      ) : selectedTable ? (
+        <p className="text-xs text-muted-foreground">
+          This table has no columns yet.{" "}
+          <Link href="/design/tables" className="underline underline-offset-4">
+            Add columns
+          </Link>
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function TableColumnsPreview({ columns }: { columns: DataTableColumn[] }) {
+  return (
+    <div className="border bg-muted/20">
+      <div className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+        Columns ({columns.length})
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Label</TableHead>
+            <TableHead>Key</TableHead>
+            <TableHead>Type</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {columns.map((column) => (
+            <TableRow key={column.key}>
+              <TableCell className="text-sm">{column.label}</TableCell>
+              <TableCell className="font-mono text-xs text-muted-foreground">
+                {column.key}
+              </TableCell>
+              <TableCell className="text-xs capitalize text-muted-foreground">
+                {column.type}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+export function TableColumnMapEditor({
+  idPrefix,
+  columns,
+  value,
+  upstreamOptions,
+  onChange,
+}: {
+  idPrefix: string
+  columns: DataTableColumn[]
+  value: TableColumnMapRow[]
+  upstreamOptions: UpstreamFieldOption[]
+  onChange: (value: TableColumnMapRow[]) => void
+}) {
+  const rows = React.useMemo(
+    () => buildDefaultColumnMappings(columns, value),
+    [columns, value]
+  )
+
+  const updateRow = (columnKey: string, sourceField: string) => {
+    onChange(
+      rows.map((row) =>
+        row.columnKey === columnKey ? { ...row, sourceField } : row
+      )
+    )
+  }
+
+  if (columns.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Select a table with columns to map values from the previous node.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Column</TableHead>
+            <TableHead>Value from previous node</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {columns.map((column) => {
+            const mapping = rows.find((row) => row.columnKey === column.key)
+            return (
+              <TableRow key={`${idPrefix}-${column.key}`}>
+                <TableCell>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium">{column.label}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {column.key} · {column.type}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <UpstreamFieldSelect
+                    id={`${idPrefix}-map-${column.key}`}
+                    value={mapping?.sourceField ?? ""}
+                    options={upstreamOptions}
+                    onChange={(sourceField) => updateRow(column.key, sourceField)}
+                    placeholder={
+                      upstreamOptions.length === 0
+                        ? "Connect a previous node…"
+                        : "Select a field…"
+                    }
+                  />
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+      {upstreamOptions.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Connect a previous node to map its output fields into table columns.
+        </p>
+      ) : null}
+    </div>
+  )
+}
