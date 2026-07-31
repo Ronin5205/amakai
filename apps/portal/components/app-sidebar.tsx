@@ -75,7 +75,7 @@ function NavGroupItem({
   if (!item.items?.length) return null
 
   const Icon = item.icon
-  const open = isNavGroupActive(pathname, item)
+  const open = isNavGroupActive(pathname, item, search)
 
   return (
     <Collapsible defaultOpen={open} className="group/collapsible">

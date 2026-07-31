@@ -193,7 +193,7 @@ export function EditorNodeInspectorPanel({
       className={cn(
         "pointer-events-auto absolute z-30 flex min-h-0 flex-col overflow-hidden border bg-background shadow-md",
         isMaximized
-          ? "inset-y-0 right-0 max-h-none w-[min(100%,32rem)] rounded-none border-y-0 border-r-0"
+          ? "inset-0 z-40 max-h-none w-full rounded-none border-0"
           : cn(
               "rounded-none",
               isExpanded

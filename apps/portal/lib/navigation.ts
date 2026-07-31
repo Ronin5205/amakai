@@ -297,10 +297,15 @@ export function isNavItemActive(
   return true
 }
 
-export function isNavGroupActive(pathname: string, item: PortalNavItem) {
+export function isNavGroupActive(
+  pathname: string,
+  item: PortalNavItem,
+  currentSearch = ""
+) {
   return (
     item.items?.some(
-      (child) => child.href && isNavItemActive(pathname, child.href)
+      (child) =>
+        child.href && isNavItemActive(pathname, child.href, currentSearch)
     ) ?? false
   )
 }
