@@ -51,14 +51,7 @@ export const NODE_DEFINITIONS: Record<NodeKind, NodeDefinition> = {
     description: "Runs one step",
     inputs: [MAIN_INPUT],
     outputs: [MAIN_OUTPUT],
-    configSchema: [
-      {
-        key: "apiEndpoint",
-        label: "Endpoint",
-        type: "string",
-        placeholder: "https://api.example.com/action",
-      },
-    ],
+    configSchema: [],
   },
   parallel: {
     kind: "parallel",
@@ -90,10 +83,29 @@ export const NODE_DEFINITIONS: Record<NodeKind, NodeDefinition> = {
     ],
     configSchema: [
       {
-        key: "condition",
-        label: "Condition",
+        key: "field",
+        label: "Field",
+        type: "upstream-field",
+        required: true,
+      },
+      {
+        key: "operator",
+        label: "Operator",
+        type: "select",
+        options: [
+          { label: "equals", value: "equals" },
+          { label: "not equals", value: "not_equals" },
+          { label: "greater than", value: "greater_than" },
+          { label: "less than", value: "less_than" },
+          { label: "contains", value: "contains" },
+        ],
+        defaultValue: "equals",
+      },
+      {
+        key: "compareValue",
+        label: "Value",
         type: "string",
-        placeholder: "$json.status === 'approved'",
+        required: true,
       },
     ],
   },
@@ -103,15 +115,15 @@ export const NODE_DEFINITIONS: Record<NodeKind, NodeDefinition> = {
     description: "Repeats over items",
     inputs: [MAIN_INPUT],
     outputs: [
-      { id: "each-item", label: "Each item", type: "main" },
+      { id: "loop", label: "Loop", type: "main" },
       { id: "done", label: "Done", type: "main" },
     ],
     configSchema: [
       {
-        key: "collectionPath",
-        label: "Collection",
-        type: "string",
-        placeholder: "$json.items",
+        key: "collectionField",
+        label: "Collection field",
+        type: "upstream-field",
+        required: true,
       },
     ],
   },

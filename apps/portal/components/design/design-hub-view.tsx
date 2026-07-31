@@ -23,8 +23,10 @@ import {
 } from "@/components/design/design-resources-panel"
 import { EditorFloatingChrome } from "@/components/design/editor-floating-chrome"
 import { EditorNodeInspectorPanel } from "@/components/design/editor-node-inspector-panel"
+import { ValidationPanel } from "@/components/design/validation-panel"
 import { WorkflowNodeGraph } from "@/components/design/workflow-node-graph"
 import { useDesignHubState } from "@/hooks/use-design-hub-state"
+import { useWorkflowValidation } from "@/hooks/use-workflow-validation"
 import { useWorkflowAutoSave } from "@/hooks/use-workflow-auto-save"
 import { deleteWorkflowAction } from "@/lib/actions/workflow-actions"
 import { isPersistedWorkflowId } from "@/lib/data/workflow-mappers"
@@ -41,6 +43,7 @@ import {
   type ResourcesPanelTab,
 } from "@/lib/design/design-hub-types"
 import { NODE_PALETTE, parsePaletteDragId } from "@/lib/design/node-utils"
+import { getComponentCatalogItemById } from "@/lib/design/component-catalog"
 import type {
   ClarificationQuestion,
   PlanningStage,
@@ -185,6 +188,18 @@ export function DesignHubView({
 
   const { status: saveStatus, error: saveError, flushSave } =
     useWorkflowAutoSave(workflow, handleWorkflowSaved)
+
+  const {
+    status: validationStatus,
+    logs: validationLogs,
+    nodeStates: validationNodeStates,
+    activeEdgeId: validationActiveEdgeId,
+    isDeployable,
+    panelOpen: validationPanelOpen,
+    setPanelOpen: setValidationPanelOpen,
+    runValidation,
+    isRunning: isValidating,
+  } = useWorkflowValidation(workflow)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -335,10 +350,12 @@ export function DesignHubView({
   )
 
   const onDragStart = (event: DragStartEvent) => {
-    const kind = parsePaletteDragId(String(event.active.id))
-    if (kind) {
-      const item = NODE_PALETTE.find((entry) => entry.kind === kind)
-      setActiveDragLabel(item?.label ?? kind)
+    const catalogItemId = parsePaletteDragId(String(event.active.id))
+    if (catalogItemId) {
+      const item =
+        getComponentCatalogItemById(catalogItemId) ??
+        NODE_PALETTE.find((entry) => entry.id === catalogItemId)
+      setActiveDragLabel(item?.label ?? catalogItemId)
       return
     }
 
@@ -347,6 +364,12 @@ export function DesignHubView({
 
   const handleDeployOpen = async () => {
     setDeployMessage(null)
+
+    if (!isDeployable) {
+      setDeployMessage("Validate the workflow in the playground before deploying.")
+      return
+    }
+
     const { workflow: savedWorkflow, error } = await flushSave()
 
     if (error) {
@@ -406,6 +429,8 @@ export function DesignHubView({
           onUndo={undo}
           onRedo={redo}
           onRegisterViewport={handleRegisterViewport}
+          nodeExecutionStates={validationNodeStates}
+          activeEdgeId={validationActiveEdgeId}
         />
 
         <EditorFloatingChrome
@@ -415,15 +440,20 @@ export function DesignHubView({
           isDeleting={isDeleting}
           actionMessage={actionMessage}
           deployMessage={deployMessage}
+          validationStatus={validationStatus}
+          isDeployable={isDeployable}
+          isValidating={isValidating}
           onNameChange={handleWorkflowNameChange}
           onOpenResources={handleOpenResources}
           onOpenAi={() => handleAiOpenChange(true)}
           onDelete={handleRequestDelete}
+          onValidate={runValidation}
           onDeploy={handleDeployOpen}
         />
         <EditorNodeInspectorPanel
           open={inspectorOpen}
           onClose={handleCloseInspector}
+          workflow={workflow}
           node={selectedNode}
           selectedCount={selectedNodeIds.length}
           onLabelChange={(label) => {
@@ -471,6 +501,15 @@ export function DesignHubView({
             `Deployed ${result.version} to ${result.environment}.`
           )
         }}
+      />
+
+      <ValidationPanel
+        open={validationPanelOpen}
+        onOpenChange={setValidationPanelOpen}
+        status={validationStatus}
+        logs={validationLogs}
+        isRunning={isValidating}
+        onRunValidation={runValidation}
       />
 
       <Sheet open={aiOpen} onOpenChange={handleAiOpenChange}>

@@ -2,7 +2,22 @@
 
 import * as React from "react"
 
-import type { ConfigSchemaField } from "@/lib/domain/workflow"
+import {
+  FieldEditTableEditor,
+  FieldRenameTableEditor,
+  OutputFieldsEditor,
+  SwitchRulesEditor,
+  UpstreamFieldSelect,
+} from "@/components/design/node-config-custom-fields"
+import type { ConfigSchemaField, WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
+import {
+  asEditRows,
+  asRenameRows,
+  asStringArray,
+  buildDefaultSwitchCases,
+  normalizeSwitchCases,
+  resolveUpstreamFieldOptions,
+} from "@/lib/design/upstream-fields"
 import { Input } from "@amakai/shared/components/ui/input"
 import {
   Field,
@@ -21,6 +36,9 @@ import { Textarea } from "@amakai/shared/components/ui/textarea"
 import { Toggle } from "@amakai/shared/components/ui/toggle"
 
 export interface NodeConfigFieldsProps {
+  node: WorkflowNode
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
   fields: ConfigSchemaField[]
   values: Record<string, unknown>
   idPrefix: string
@@ -36,27 +54,6 @@ function readFieldValue(
     return value
   }
   return field.defaultValue
-}
-
-function formatJsonValue(value: unknown) {
-  if (value === undefined || value === null) {
-    return ""
-  }
-
-  if (typeof value === "string") {
-    return value
-  }
-
-  return JSON.stringify(value, null, 2)
-}
-
-function parseJsonValue(raw: string): unknown {
-  const trimmed = raw.trim()
-  if (!trimmed) {
-    return undefined
-  }
-
-  return JSON.parse(trimmed) as unknown
 }
 
 function ConfigSelectField({
@@ -111,14 +108,79 @@ function ConfigField({
   field,
   value,
   id,
+  node,
+  nodes,
+  edges,
+  values,
   onChange,
 }: {
   field: ConfigSchemaField
   value: unknown
   id: string
+  node: WorkflowNode
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
+  values: Record<string, unknown>
   onChange: (value: unknown) => void
 }) {
+  const upstreamOptions = React.useMemo(
+    () => resolveUpstreamFieldOptions(nodes, edges, node.id),
+    [edges, node.id, nodes]
+  )
+
   switch (field.type) {
+    case "output-fields":
+      return (
+        <OutputFieldsEditor
+          idPrefix={id}
+          value={asStringArray(value)}
+          onChange={onChange}
+        />
+      )
+
+    case "field-rename-table":
+      return (
+        <FieldRenameTableEditor
+          idPrefix={id}
+          value={asRenameRows(value)}
+          upstreamOptions={upstreamOptions}
+          onChange={onChange}
+        />
+      )
+
+    case "field-edit-table":
+      return (
+        <FieldEditTableEditor
+          idPrefix={id}
+          value={asEditRows(value)}
+          upstreamOptions={upstreamOptions}
+          onChange={onChange}
+        />
+      )
+
+    case "switch-rules": {
+      const caseCount = Math.max(2, Number(values.caseCount ?? 2))
+      const includeDefault = values.includeDefaultOutput !== false
+      const rules = normalizeSwitchCases(value, caseCount, includeDefault)
+      return (
+        <SwitchRulesEditor
+          idPrefix={id}
+          value={rules}
+          onChange={onChange}
+        />
+      )
+    }
+
+    case "upstream-field":
+      return (
+        <UpstreamFieldSelect
+          id={id}
+          value={typeof value === "string" ? value : ""}
+          options={upstreamOptions}
+          onChange={onChange}
+        />
+      )
+
     case "boolean":
       return (
         <Toggle
@@ -139,7 +201,6 @@ function ConfigField({
           id={id}
           type="number"
           value={value === undefined || value === null ? "" : String(value)}
-          placeholder={field.placeholder}
           onChange={(event) => {
             const next = event.target.value
             onChange(next === "" ? undefined : Number(next))
@@ -157,36 +218,25 @@ function ConfigField({
         />
       )
 
+    case "json":
+      return null
+
     case "textarea":
     case "code":
-    case "json":
       return (
         <Textarea
           id={id}
           value={
-            field.type === "json"
-              ? formatJsonValue(value)
-              : typeof value === "string"
-                ? value
-                : value === undefined || value === null
-                  ? ""
-                  : String(value)
+            typeof value === "string"
+              ? value
+              : value === undefined || value === null
+                ? ""
+                : String(value)
           }
           placeholder={field.placeholder}
-          className={field.type === "code" || field.type === "json" ? "font-mono" : undefined}
-          rows={field.type === "code" || field.type === "json" ? 5 : 3}
-          onChange={(event) => {
-            const next = event.target.value
-            if (field.type === "json") {
-              try {
-                onChange(parseJsonValue(next))
-              } catch {
-                onChange(next)
-              }
-              return
-            }
-            onChange(next || undefined)
-          }}
+          className={field.type === "code" ? "font-mono" : undefined}
+          rows={field.type === "code" ? 5 : 3}
+          onChange={(event) => onChange(event.target.value || undefined)}
         />
       )
 
@@ -194,7 +244,13 @@ function ConfigField({
       return (
         <Input
           id={id}
-          value={typeof value === "string" ? value : value === undefined || value === null ? "" : String(value)}
+          value={
+            typeof value === "string"
+              ? value
+              : value === undefined || value === null
+                ? ""
+                : String(value)
+          }
           placeholder={field.placeholder}
           onChange={(event) => onChange(event.target.value || undefined)}
         />
@@ -203,18 +259,52 @@ function ConfigField({
 }
 
 export function NodeConfigFields({
+  node,
+  nodes,
+  edges,
   fields,
   values,
   idPrefix,
   onChange,
 }: NodeConfigFieldsProps) {
-  if (fields.length === 0) {
+  const visibleFields = fields.filter(
+    (field) => field.key !== "catalogItemId" && field.type !== "json"
+  )
+
+  if (visibleFields.length === 0) {
     return null
+  }
+
+  const handleChange = (field: ConfigSchemaField, next: unknown) => {
+    onChange(field.key, next)
+
+    if (field.key === "caseCount" || field.key === "includeDefaultOutput") {
+      const caseCount = Math.max(
+        2,
+        Number(field.key === "caseCount" ? next : values.caseCount ?? 2)
+      )
+      const includeDefault =
+        field.key === "includeDefaultOutput"
+          ? next !== false
+          : values.includeDefaultOutput !== false
+
+      onChange(
+        "switchCases",
+        buildDefaultSwitchCases(caseCount, includeDefault).map((rule) => {
+          const existing = normalizeSwitchCases(
+            values.switchCases,
+            caseCount,
+            includeDefault
+          ).find((entry) => entry.portId === rule.portId)
+          return existing ?? rule
+        })
+      )
+    }
   }
 
   return (
     <>
-      {fields.map((field) => {
+      {visibleFields.map((field) => {
         const fieldId = `${idPrefix}-${field.key}`
         const value = readFieldValue(values, field)
 
@@ -228,10 +318,20 @@ export function NodeConfigFields({
               field={field}
               value={value}
               id={fieldId}
-              onChange={(next) => onChange(field.key, next)}
+              node={node}
+              nodes={nodes}
+              edges={edges}
+              values={values}
+              onChange={(next) => handleChange(field, next)}
             />
             {field.description ? (
               <FieldDescription>{field.description}</FieldDescription>
+            ) : null}
+            {field.type === "upstream-field" &&
+            resolveUpstreamFieldOptions(nodes, edges, node.id).length === 0 ? (
+              <FieldDescription>
+                Connect a previous node to map fields from its JSON output.
+              </FieldDescription>
             ) : null}
           </Field>
         )

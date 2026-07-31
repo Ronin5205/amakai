@@ -5,8 +5,8 @@ import { TrashIcon } from "@phosphor-icons/react"
 
 import { NodeConfigFields } from "@/components/design/node-config-fields"
 import { StatusBadge } from "@/components/portal/status-badge"
-import { getNodeDefinition } from "@/lib/design/node-definitions"
-import type { WorkflowNode } from "@/lib/domain/workflow"
+import { getCatalogItemId, resolveNodeDefinition } from "@/lib/design/resolve-node-definition"
+import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
 import { Button } from "@amakai/shared/components/ui/button"
 import {
   Field,
@@ -17,6 +17,7 @@ import { Input } from "@amakai/shared/components/ui/input"
 
 export interface NodeInspectorProps {
   node: WorkflowNode | null
+  workflow: Workflow
   selectedCount: number
   onLabelChange: (label: string) => void
   onConfigChange: (key: string, value: unknown) => void
@@ -25,6 +26,7 @@ export interface NodeInspectorProps {
 
 export function NodeInspector({
   node,
+  workflow,
   selectedCount,
   onLabelChange,
   onConfigChange,
@@ -65,7 +67,8 @@ export function NodeInspector({
     )
   }
 
-  const definition = getNodeDefinition(node.kind)
+  const definition = resolveNodeDefinition(node)
+  const catalogItemId = getCatalogItemId(node)
   const hasConfig = definition.configSchema.length > 0
 
   return (
@@ -75,6 +78,11 @@ export function NodeInspector({
           <h2 className="text-sm font-medium">{node.label}</h2>
           <StatusBadge status={node.kind} label={node.kind} />
         </div>
+        {catalogItemId ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {definition.description}
+          </p>
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -91,6 +99,9 @@ export function NodeInspector({
 
             {hasConfig ? (
               <NodeConfigFields
+                node={node}
+                nodes={workflow.nodes}
+                edges={workflow.edges ?? []}
                 fields={definition.configSchema}
                 values={node.config}
                 idPrefix={`${node.id}-config`}

@@ -62,7 +62,7 @@ export function cloneWorkflowGraph(
     return {
       ...node,
       id: newId,
-      config: { ...node.config },
+      config: remapUpstreamRefsInConfig(node.config, idMap),
       position: node.position ? { ...node.position } : undefined,
     }
   })
@@ -77,6 +77,48 @@ export function cloneWorkflowGraph(
   }))
 
   return { nodes: clonedNodes, edges: clonedEdges }
+}
+
+function remapUpstreamRefsInValue(
+  value: unknown,
+  idMap: Map<string, string>
+): unknown {
+  if (typeof value === "string") {
+    const dotIndex = value.indexOf(".")
+    if (dotIndex === -1) {
+      return value
+    }
+
+    const nodeId = value.slice(0, dotIndex)
+    const mappedId = idMap.get(nodeId)
+    if (!mappedId) {
+      return value
+    }
+
+    return `${mappedId}${value.slice(dotIndex)}`
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => remapUpstreamRefsInValue(entry, idMap))
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        remapUpstreamRefsInValue(entry, idMap),
+      ])
+    )
+  }
+
+  return value
+}
+
+function remapUpstreamRefsInConfig(
+  config: WorkflowNode["config"],
+  idMap: Map<string, string>
+) {
+  return remapUpstreamRefsInValue({ ...config }, idMap) as WorkflowNode["config"]
 }
 
 export function layoutWorkflowGraph(

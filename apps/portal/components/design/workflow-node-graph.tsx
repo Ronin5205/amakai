@@ -24,6 +24,7 @@ import {
 } from "@/lib/design/canvas-viewport"
 import { CANVAS_DROP_ID } from "@/lib/design/design-hub-types"
 import type { WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
+import type { NodeExecutionState } from "@/lib/engine/types"
 import {
   Empty,
   EmptyDescription,
@@ -69,6 +70,8 @@ export interface WorkflowNodeGraphProps {
   onRedo: () => void
   onRegisterViewport?: (api: CanvasViewportApi) => void
   fullBleed?: boolean
+  nodeExecutionStates?: Record<string, NodeExecutionState>
+  activeEdgeId?: string | null
 }
 
 type MarqueeState = {
@@ -143,6 +146,8 @@ export function WorkflowNodeGraph({
   onRedo,
   onRegisterViewport,
   fullBleed = false,
+  nodeExecutionStates = {},
+  activeEdgeId = null,
 }: WorkflowNodeGraphProps) {
   const [canvasMode, setCanvasMode] =
     React.useState<CanvasInteractionMode>("select")
@@ -619,6 +624,7 @@ export function WorkflowNodeGraph({
                           from={from}
                           to={to}
                           isSelected={selectedEdgeId === edge.id}
+                          isActive={activeEdgeId === edge.id}
                           onSelect={handleEdgeSelect}
                         />
                       )
@@ -655,6 +661,7 @@ export function WorkflowNodeGraph({
                       node={node}
                       zoom={viewport.zoom}
                       isSelected={selectedNodeIds.includes(node.id)}
+                      executionState={nodeExecutionStates[node.id] ?? "idle"}
                       isConnectionSource={
                         connectionSource?.nodeId === node.id
                       }

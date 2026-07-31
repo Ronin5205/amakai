@@ -5,6 +5,7 @@ import { useDraggable } from "@dnd-kit/core"
 import { DotsSixVerticalIcon, MagnifyingGlassIcon } from "@phosphor-icons/react"
 
 import {
+  BASE_COMPONENT_CATEGORY_IDS,
   getComponentCatalogGroups,
   type ComponentCatalogItem,
 } from "@/lib/design/component-catalog"
@@ -20,8 +21,8 @@ import { cn } from "@amakai/shared/lib/utils"
 
 function DraggablePaletteItem({ item }: { item: ComponentCatalogItem }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: paletteDragId(item.kind),
-    data: { kind: item.kind },
+    id: paletteDragId(item.id),
+    data: { catalogItemId: item.id, kind: item.kind },
   })
 
   return (
@@ -48,7 +49,9 @@ function DraggablePaletteItem({ item }: { item: ComponentCatalogItem }) {
 export function NodePalettePanel() {
   const [query, setQuery] = React.useState("")
   const groups = React.useMemo(() => getComponentCatalogGroups(query), [query])
-  const [openCategories, setOpenCategories] = React.useState<string[]>(["core"])
+  const [openCategories, setOpenCategories] = React.useState<string[]>(
+    BASE_COMPONENT_CATEGORY_IDS
+  )
 
   React.useEffect(() => {
     if (query.trim()) {
@@ -56,7 +59,7 @@ export function NodePalettePanel() {
       return
     }
 
-    setOpenCategories(["core"])
+    setOpenCategories(BASE_COMPONENT_CATEGORY_IDS)
   }, [groups, query])
 
   return (
@@ -101,7 +104,7 @@ export function NodePalettePanel() {
                 <AccordionContent className="px-3 pb-3">
                   <div className="flex flex-col gap-2">
                     {group.items.map((item) => (
-                      <DraggablePaletteItem key={item.kind} item={item} />
+                      <DraggablePaletteItem key={item.id} item={item} />
                     ))}
                   </div>
                 </AccordionContent>

@@ -15,8 +15,14 @@ import {
   getNodeDimensions,
   getPortYOffset,
 } from "@/lib/design/node-layout"
-import { getNodeDefinition } from "@/lib/design/node-definitions"
-import type { NodeKind, WorkflowNode } from "@/lib/domain/workflow"
+import { resolveNodeDefinition } from "@/lib/design/resolve-node-definition"
+import type { NodeKind, NodePort, WorkflowNode } from "@/lib/domain/workflow"
+import type { NodeExecutionState } from "@/lib/engine/types"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@amakai/shared/components/ui/tooltip"
 import { cn } from "@amakai/shared/lib/utils"
 
 const NODE_ICONS: Record<NodeKind, React.ElementType> = {
@@ -29,9 +35,40 @@ const NODE_ICONS: Record<NodeKind, React.ElementType> = {
   exception: WarningIcon,
 }
 
+function PortTooltip({
+  port,
+  nodeLabel,
+  side,
+  children,
+}: {
+  port: NodePort
+  nodeLabel: string
+  side: "left" | "right"
+  children: React.ReactElement
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent side={side} className="max-w-56 text-left">
+        <p className="font-medium">{port.label}</p>
+        {port.description ? (
+          <p className="mt-0.5 text-xs text-muted-foreground">{port.description}</p>
+        ) : (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {side === "left"
+              ? `Connect data into ${nodeLabel}.`
+              : `Connect data from ${nodeLabel}.`}
+          </p>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 export interface CanvasWorkflowNodeProps {
   node: WorkflowNode
   isSelected: boolean
+  executionState?: NodeExecutionState
   isConnectionSource: boolean
   connectionSourcePortId?: string
   isConnectionTarget: boolean
@@ -49,6 +86,7 @@ export interface CanvasWorkflowNodeProps {
 export function CanvasWorkflowNode({
   node,
   isSelected,
+  executionState = "idle",
   isConnectionSource,
   connectionSourcePortId,
   isConnectionTarget,
@@ -59,7 +97,7 @@ export function CanvasWorkflowNode({
   onPortPointerDown,
 }: CanvasWorkflowNodeProps) {
   const Icon = NODE_ICONS[node.kind]
-  const definition = getNodeDefinition(node.kind)
+  const definition = resolveNodeDefinition(node)
   const inputPorts = definition.inputs
   const outputPorts = definition.outputs
   const { width, height } = getNodeDimensions(node)
@@ -109,20 +147,25 @@ export function CanvasWorkflowNode({
       }}
     >
       {inputPorts.map((port, index) => (
-        <button
+        <PortTooltip
           key={port.id}
-          type="button"
-          title={port.label}
-          aria-label={`Connect ${port.label} to ${node.label}`}
-          className={cn(
-            "absolute -left-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
-            isConnectionTarget
-              ? "border-primary bg-primary/20"
-              : "border-muted-foreground/40 hover:border-primary"
-          )}
-          style={{ top: getPortYOffset(index, inputPorts.length, height) }}
-          onPointerDown={(event) => onPortPointerDown("input", event, index)}
-        />
+          port={port}
+          nodeLabel={node.label}
+          side="left"
+        >
+          <button
+            type="button"
+            aria-label={`Connect ${port.label} to ${node.label}`}
+            className={cn(
+              "absolute -left-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
+              isConnectionTarget
+                ? "border-primary bg-primary/20"
+                : "border-muted-foreground/40 hover:border-primary"
+            )}
+            style={{ top: getPortYOffset(index, inputPorts.length, height) }}
+            onPointerDown={(event) => onPortPointerDown("input", event, index)}
+          />
+        </PortTooltip>
       ))}
 
       {outputPorts.map((port, index) => {
@@ -130,36 +173,58 @@ export function CanvasWorkflowNode({
           isConnectionSource && connectionSourcePortId === port.id
 
         return (
-          <button
+          <PortTooltip
             key={port.id}
-            type="button"
-            title={port.label}
-            aria-label={`Connect ${port.label} from ${node.label}`}
-            className={cn(
-              "absolute -right-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
-              isPortConnectionSource
-                ? "border-primary bg-primary/20"
-                : "border-primary/50 hover:border-primary"
-            )}
-            style={{ top: getPortYOffset(index, outputPorts.length, height) }}
-            onPointerDown={(event) => onPortPointerDown("output", event, index)}
-          />
+            port={port}
+            nodeLabel={node.label}
+            side="right"
+          >
+            <button
+              type="button"
+              aria-label={`Connect ${port.label} from ${node.label}`}
+              className={cn(
+                "absolute -right-2 z-10 size-4 -translate-y-1/2 rounded-full border-2 bg-background transition-colors",
+                isPortConnectionSource
+                  ? "border-primary bg-primary/20"
+                  : "border-primary/50 hover:border-primary"
+              )}
+              style={{ top: getPortYOffset(index, outputPorts.length, height) }}
+              onPointerDown={(event) => onPortPointerDown("output", event, index)}
+            />
+          </PortTooltip>
         )
       })}
 
       <div
         className={cn(
-          "relative flex h-full cursor-grab items-center gap-3 rounded-none border bg-background px-3 shadow-sm active:cursor-grabbing",
+          "relative flex h-full cursor-grab items-center gap-3 overflow-hidden rounded-none border bg-background px-3 shadow-sm active:cursor-grabbing",
           isSelected && "border-primary ring-2 ring-primary/20",
-          isConnectionSource && connectionSourcePortId && "border-primary/60"
+          isConnectionSource &&
+            connectionSourcePortId &&
+            "border-primary/60"
         )}
         onPointerDown={handleBodyPointerDown}
       >
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-none bg-muted">
+        {executionState !== "idle" ? (
+          <div
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute inset-0 transition-[background-color,box-shadow] duration-300",
+              executionState === "running" &&
+                "bg-chart-2/20 ring-2 ring-inset ring-chart-2/70",
+              executionState === "completed" &&
+                "bg-chart-3/12 ring-1 ring-inset ring-chart-3/50",
+              executionState === "error" &&
+                "bg-destructive/15 ring-2 ring-inset ring-destructive/80"
+            )}
+          />
+        ) : null}
+
+        <div className="relative z-[1] flex size-9 shrink-0 items-center justify-center rounded-none bg-muted">
           <Icon className="text-foreground" />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="relative z-[1] flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate text-sm font-medium">{node.label}</span>
           <StatusBadge status={node.kind} label={node.kind} className="w-fit" />
         </div>

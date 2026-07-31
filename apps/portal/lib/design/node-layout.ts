@@ -1,5 +1,5 @@
 import type { WorkflowNode } from "@/lib/domain/workflow"
-import { getNodeDefinition } from "@/lib/design/node-definitions"
+import { resolveNodeDefinition } from "@/lib/design/resolve-node-definition"
 
 export const CANVAS_NODE_MIN_WIDTH = 220
 export const CANVAS_NODE_MIN_HEIGHT = 72
@@ -19,7 +19,7 @@ export type NodeDimensions = {
 }
 
 export function getNodePortCount(node: WorkflowNode, side: "input" | "output") {
-  const definition = getNodeDefinition(node.kind)
+  const definition = resolveNodeDefinition(node)
   const ports = side === "input" ? definition.inputs : definition.outputs
   return ports.length
 }
@@ -71,7 +71,7 @@ export function getNodePortId(
   side: "input" | "output",
   portIndex: number
 ) {
-  const definition = getNodeDefinition(node.kind)
+  const definition = resolveNodeDefinition(node)
   const ports = side === "input" ? definition.inputs : definition.outputs
   return ports[portIndex]?.id
 }
@@ -85,7 +85,7 @@ export function getNodePortIndex(
     return 0
   }
 
-  const definition = getNodeDefinition(node.kind)
+  const definition = resolveNodeDefinition(node)
   const ports = side === "input" ? definition.inputs : definition.outputs
   const index = ports.findIndex((port) => port.id === portId)
   return index >= 0 ? index : 0
@@ -96,7 +96,7 @@ export function getNodePortPosition(
   side: "input" | "output",
   portIndex = 0
 ) {
-  const definition = getNodeDefinition(node.kind)
+  const definition = resolveNodeDefinition(node)
   const ports = side === "input" ? definition.inputs : definition.outputs
   const { width, height } = getNodeDimensions(node)
   const x = node.position?.x ?? 0
@@ -126,7 +126,7 @@ export function resolveOutputPortId(
     return portId
   }
 
-  const definition = getNodeDefinition(node.kind)
+  const definition = resolveNodeDefinition(node)
   return definition.outputs[0]?.id
 }
 
@@ -135,7 +135,7 @@ export function resolveInputPortId(node: WorkflowNode, portId?: string) {
     return portId
   }
 
-  const definition = getNodeDefinition(node.kind)
+  const definition = resolveNodeDefinition(node)
   return definition.inputs[0]?.id
 }
 

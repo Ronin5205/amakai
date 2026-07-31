@@ -13,6 +13,7 @@ import {
 
 import { DraftSaveStatus } from "@/components/design/draft-save-status"
 import { WorkflowTitleEditor } from "@/components/design/workflow-title-editor"
+import type { ValidationStatus } from "@/hooks/use-workflow-validation"
 import type { DraftSaveStatus as SaveStatus } from "@/hooks/use-workflow-auto-save"
 import { Button } from "@amakai/shared/components/ui/button"
 import {
@@ -28,10 +29,14 @@ export interface EditorFloatingChromeProps {
   isDeleting: boolean
   actionMessage?: string | null
   deployMessage?: string | null
+  validationStatus?: ValidationStatus
+  isDeployable?: boolean
+  isValidating?: boolean
   onNameChange: (name: string) => void
   onOpenResources: () => void
   onOpenAi: () => void
   onDelete: () => void
+  onValidate: () => void
   onDeploy: () => void
 }
 
@@ -42,10 +47,14 @@ export function EditorFloatingChrome({
   isDeleting,
   actionMessage,
   deployMessage,
+  validationStatus = "idle",
+  isDeployable = false,
+  isValidating = false,
   onNameChange,
   onOpenResources,
   onOpenAi,
   onDelete,
+  onValidate,
   onDeploy,
 }: EditorFloatingChromeProps) {
   const message = actionMessage ?? deployMessage
@@ -110,13 +119,35 @@ export function EditorFloatingChrome({
           <Tooltip>
             <TooltipTrigger
               render={
-                <Button type="button" variant="ghost" size="sm" disabled />
+                <Button
+                  type="button"
+                  variant={
+                    validationStatus === "passed"
+                      ? "secondary"
+                      : validationStatus === "failed"
+                        ? "destructive"
+                        : "ghost"
+                  }
+                  size="sm"
+                  disabled={isValidating}
+                  onClick={onValidate}
+                />
               }
             >
               <ShieldCheckIcon data-icon="inline-start" />
-              Validate
+              {isValidating
+                ? "Validating…"
+                : validationStatus === "passed"
+                  ? "Validated"
+                  : "Validate"}
             </TooltipTrigger>
-            <TooltipContent side="bottom">Validate workflow</TooltipContent>
+            <TooltipContent side="bottom">
+              {validationStatus === "passed"
+                ? "Validation passed — workflow is deployable"
+                : validationStatus === "failed"
+                  ? "Validation failed — fix errors and re-run"
+                  : "Run workflow in playground to validate before deploy"}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -137,10 +168,26 @@ export function EditorFloatingChrome({
             <TooltipContent side="bottom">Delete workflow</TooltipContent>
           </Tooltip>
 
-          <Button type="button" size="sm" onClick={onDeploy}>
-            <RocketLaunchIcon data-icon="inline-start" />
-            Deploy
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!isDeployable}
+                  onClick={onDeploy}
+                />
+              }
+            >
+              <RocketLaunchIcon data-icon="inline-start" />
+              Deploy
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {isDeployable
+                ? "Deploy validated workflow"
+                : "Validate the workflow before deploying"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

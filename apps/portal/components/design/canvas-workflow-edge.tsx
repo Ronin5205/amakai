@@ -13,6 +13,7 @@ export interface CanvasWorkflowEdgeProps {
   from: WorkflowNode
   to: WorkflowNode
   isSelected: boolean
+  isActive?: boolean
   onSelect: (edgeId: string) => void
 }
 
@@ -21,6 +22,7 @@ export function CanvasWorkflowEdge({
   from,
   to,
   isSelected,
+  isActive = false,
   onSelect,
 }: CanvasWorkflowEdgeProps) {
   const path = buildEdgeConnectionPath(from, to, edge)
@@ -48,10 +50,12 @@ export function CanvasWorkflowEdge({
         d={path}
         fill="none"
         stroke="currentColor"
-        strokeWidth={isSelected ? 3 : 2}
+        strokeWidth={isSelected || isActive ? 3 : 2}
         className={cn(
-          "pointer-events-none",
-          isSelected ? "text-primary" : "text-border"
+          "pointer-events-none transition-colors duration-300",
+          isActive && "text-chart-2",
+          isSelected && !isActive && "text-primary",
+          !isSelected && !isActive && "text-border"
         )}
       />
     </g>

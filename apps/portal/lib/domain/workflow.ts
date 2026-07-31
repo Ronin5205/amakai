@@ -13,6 +13,8 @@ export type NodePort = {
   id: string
   label: string
   type: PortType
+  /** Shown in a tooltip when hovering the port handle. */
+  description?: string
   required?: boolean
   maxConnections?: number
 }
@@ -23,8 +25,14 @@ export type ConfigFieldType =
   | "boolean"
   | "select"
   | "textarea"
-  | "json"
   | "code"
+  | "upstream-field"
+  | "field-rename-table"
+  | "field-edit-table"
+  | "switch-rules"
+  | "output-fields"
+  /** @internal Legacy — never surfaced in the inspector; nodes exchange JSON at runtime. */
+  | "json"
 
 export type ConfigSchemaField = {
   key: string

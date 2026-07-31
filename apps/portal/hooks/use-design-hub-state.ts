@@ -21,10 +21,10 @@ import {
   type WorkflowGraphSnapshot,
 } from "@/lib/design/workflow-history"
 import {
-  createNodeFromKind,
+  createNodeFromCatalogItem,
   createNodeId,
-  parsePaletteDragId,
   parseTemplateDragId,
+  resolveCatalogItemFromDragId,
 } from "@/lib/design/node-utils"
 import type { WorkflowTemplate } from "@/lib/domain/template"
 import { CANVAS_DROP_ID, type ResourcesPanelTab } from "@/lib/design/design-hub-types"
@@ -464,9 +464,9 @@ export function useDesignHubState(initialWorkflow: Workflow) {
         return
       }
 
-      const paletteKind = parsePaletteDragId(activeId)
-      if (paletteKind) {
-        const newNode = createNodeFromKind(paletteKind)
+      const catalogItem = resolveCatalogItemFromDragId(activeId)
+      if (catalogItem) {
+        const newNode = createNodeFromCatalogItem(catalogItem)
         const { width, height } = getNodeDimensions(newNode)
         const position = clampNodePosition(
           (dropPosition?.x ?? 0) - width / 2,

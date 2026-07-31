@@ -4,7 +4,7 @@ import * as React from "react"
 import { DotsSixVerticalIcon, XIcon } from "@phosphor-icons/react"
 
 import { NodeInspector } from "@/components/design/node-inspector"
-import type { WorkflowNode } from "@/lib/domain/workflow"
+import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
 import { Button } from "@amakai/shared/components/ui/button"
 import { cn } from "@amakai/shared/lib/utils"
 
@@ -13,6 +13,7 @@ const DEFAULT_POSITION = { x: 12, y: 120 }
 export interface EditorNodeInspectorPanelProps {
   open: boolean
   onClose: () => void
+  workflow: Workflow
   node: WorkflowNode | null
   selectedCount: number
   onLabelChange: (label: string) => void
@@ -51,6 +52,7 @@ function clampPosition(
 export function EditorNodeInspectorPanel({
   open,
   onClose,
+  workflow,
   node,
   selectedCount,
   onLabelChange,
@@ -175,6 +177,7 @@ export function EditorNodeInspectorPanel({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <NodeInspector
           node={node}
+          workflow={workflow}
           selectedCount={selectedCount}
           onLabelChange={onLabelChange}
           onConfigChange={onConfigChange}

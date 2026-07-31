@@ -1,18 +1,17 @@
-import type { NodeKind, WorkflowNode } from "@/lib/domain/workflow"
-import { COMPONENT_CATALOG } from "@/lib/design/component-catalog"
+import {
+  COMPONENT_CATALOG,
+  getComponentCatalogItemById,
+  type ComponentCatalogItem,
+} from "@/lib/design/component-catalog"
 import {
   getDefaultNodeConfig,
   getNodeDefinition,
 } from "@/lib/design/node-definitions"
+import { getDefaultVariantConfig } from "@/lib/design/component-variant-definitions"
 import { generateAiWorkflowGraph } from "@/lib/design/workflow-graph"
+import type { NodeKind, WorkflowNode } from "@/lib/domain/workflow"
 
-export const NODE_PALETTE = COMPONENT_CATALOG.map(
-  ({ kind, label, description }) => ({
-    kind,
-    label,
-    description,
-  })
-)
+export const NODE_PALETTE = COMPONENT_CATALOG
 
 export function createNodeId() {
   return `node-${crypto.randomUUID()}`
@@ -33,6 +32,18 @@ export function createNodeFromKind(
   }
 }
 
+export function createNodeFromCatalogItem(item: ComponentCatalogItem): WorkflowNode {
+  const config = {
+    ...getDefaultNodeConfig(item.kind),
+    ...getDefaultVariantConfig(item.id),
+    ...item.defaultConfig,
+    catalogItemId: item.id,
+    ...(item.isBase ? {} : { componentVariant: item.id }),
+  }
+
+  return createNodeFromKind(item.kind, item.defaultLabel ?? item.label, config)
+}
+
 export function cloneTemplateNodes(nodes: WorkflowNode[]): WorkflowNode[] {
   return nodes.map((node) => ({
     ...node,
@@ -50,20 +61,29 @@ export function generateWorkflowFromRequest(request: string): WorkflowNode[] {
 export const PALETTE_DRAG_PREFIX = "palette:"
 export const TEMPLATE_DRAG_PREFIX = "template:"
 
-export function paletteDragId(kind: NodeKind) {
-  return `${PALETTE_DRAG_PREFIX}${kind}`
+export function paletteDragId(catalogItemId: string) {
+  return `${PALETTE_DRAG_PREFIX}${catalogItemId}`
 }
 
 export function templateDragId(templateId: string) {
   return `${TEMPLATE_DRAG_PREFIX}${templateId}`
 }
 
-export function parsePaletteDragId(id: string): NodeKind | null {
+export function parsePaletteDragId(id: string): string | null {
   if (!id.startsWith(PALETTE_DRAG_PREFIX)) {
     return null
   }
 
-  return id.slice(PALETTE_DRAG_PREFIX.length) as NodeKind
+  return id.slice(PALETTE_DRAG_PREFIX.length)
+}
+
+export function resolveCatalogItemFromDragId(id: string) {
+  const catalogItemId = parsePaletteDragId(id)
+  if (!catalogItemId) {
+    return null
+  }
+
+  return getComponentCatalogItemById(catalogItemId)
 }
 
 export function parseTemplateDragId(id: string): string | null {
