@@ -26,6 +26,16 @@ import {
   normalizeSwitchCases,
   resolveUpstreamFieldOptions,
 } from "@/lib/design/upstream-fields"
+import {
+  getEditFieldCount,
+  MAX_EDIT_FIELD_COUNT,
+  normalizeFieldEditRows,
+} from "@/lib/design/edit-fields"
+import {
+  parseOutputFieldDefs,
+  serializeOutputFieldDefs,
+  type OutputFieldDef,
+} from "@/lib/design/output-fields"
 import { Input } from "@amakai/shared/components/ui/input"
 import {
   Field,
@@ -144,7 +154,7 @@ function ConfigField({
       return (
         <OutputFieldsEditor
           idPrefix={id}
-          value={asStringArray(value)}
+          value={parseOutputFieldDefs(values)}
           onChange={onChange}
         />
       )
@@ -159,15 +169,19 @@ function ConfigField({
         />
       )
 
-    case "field-edit-table":
+    case "field-edit-table": {
+      const fieldCount = getEditFieldCount(values)
+      const rows = normalizeFieldEditRows(value, fieldCount)
       return (
         <FieldEditTableEditor
           idPrefix={id}
-          value={asEditRows(value)}
+          value={rows}
+          fieldCount={fieldCount}
           upstreamOptions={upstreamOptions}
           onChange={onChange}
         />
       )
+    }
 
     case "switch-rules": {
       const caseCount = Math.max(2, Number(values.caseCount ?? 2))
@@ -177,6 +191,7 @@ function ConfigField({
         <SwitchRulesEditor
           idPrefix={id}
           value={rules}
+          upstreamOptions={upstreamOptions}
           onChange={onChange}
         />
       )
@@ -310,6 +325,18 @@ export function NodeConfigFields({
     if (field.type === "table-column-map" && values.operation !== "write") {
       return false
     }
+    if (field.key === "approverEmail" && values.approverType !== "email") {
+      return false
+    }
+    if (field.key === "approverRole" && values.approverType !== "role") {
+      return false
+    }
+    if (
+      field.key === "fieldCount" &&
+      fields.some((entry) => entry.type === "field-edit-table")
+    ) {
+      return false
+    }
     return true
   })
 
@@ -318,6 +345,18 @@ export function NodeConfigFields({
   }
 
   const handleChange = (field: ConfigSchemaField, next: unknown) => {
+    if (field.type === "output-fields" && Array.isArray(next)) {
+      const defs = (next as OutputFieldDef[]).map((def) => ({
+        name: def.name,
+        type: def.type,
+      }))
+      const serialized = serializeOutputFieldDefs(defs)
+      onChange("outputFieldDefs", defs)
+      onChange("outputFields", serialized.outputFields)
+      onChange("outputFieldTypes", serialized.outputFieldTypes)
+      return
+    }
+
     onChange(field.key, next)
 
     if (field.key === "tableName" && typeof next === "string") {
@@ -353,6 +392,22 @@ export function NodeConfigFields({
           ).find((entry) => entry.portId === rule.portId)
           return existing ?? rule
         })
+      )
+    }
+
+    if (field.key === "fieldEdits" && Array.isArray(next)) {
+      onChange("fieldCount", next.length)
+    }
+
+    if (field.key === "fieldCount") {
+      const count = Math.min(
+        MAX_EDIT_FIELD_COUNT,
+        Math.max(1, Math.floor(Number(next) || 1))
+      )
+      onChange("fieldCount", count)
+      onChange(
+        "fieldEdits",
+        normalizeFieldEditRows(values.fieldEdits, count)
       )
     }
   }

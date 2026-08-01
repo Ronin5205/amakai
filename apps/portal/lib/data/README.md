@@ -37,11 +37,10 @@ export default async function Page() {
 | `templates.ts` | `listTemplates` | `template` |
 | `workflows.ts` | `listWorkflows`, `getWorkflowDraft`, `createWorkflowDraft`, `saveWorkflowDraft`, `deleteWorkflow` | `workflow` |
 | `planning.ts` | `getPlanningStages`, `getSampleAnalysis`, `getClarificationQuestions` | `planning` |
-| `validation.ts` | `getValidationStages`, `getValidationChecks` | `validation` |
 
-Fixtures live in `fixtures/` and mirror the shape of `lib/domain/*`. When wiring Supabase, keep domain types as the contract and map DB rows to them inside the accessor.
+Fixtures mirror the shape of `lib/domain/*`. When wiring Supabase, keep domain types as the contract and map DB rows to them inside the accessor.
 
-**Workflows** (`workflows.ts`) are partially live: list/get/create/save/delete use Supabase when authenticated. Templates, planning, validation, and deploy environments still use fixtures until those tables are wired.
+**Workflows** (`workflows.ts`) are partially live: list/get/create/save/delete use Supabase when authenticated. Templates, planning, and deploy environments still use fixtures until those tables are wired.
 
 ## Swapping to Supabase (example)
 

@@ -7,12 +7,19 @@ import { PlusIcon, TrashIcon } from "@phosphor-icons/react"
 import type { DataTableColumn, DataTableSummary, TableColumnMapRow } from "@/lib/domain/data-table"
 import { buildDefaultColumnMappings } from "@/lib/domain/data-table"
 
+import {
+  MAX_EDIT_FIELD_COUNT,
+  normalizeFieldEditRows,
+} from "@/lib/design/edit-fields"
 import type {
   FieldEditRow,
   FieldRenameRow,
   SwitchCaseRule,
   UpstreamFieldOption,
 } from "@/lib/design/upstream-fields"
+import { isSwitchDefaultCase } from "@/lib/design/switch-rules"
+import { COMPARISON_OPERATORS } from "@/lib/design/comparison-rules"
+import type { OutputFieldDef, OutputFieldType } from "@/lib/design/output-fields"
 import { Button } from "@amakai/shared/components/ui/button"
 import { Input } from "@amakai/shared/components/ui/input"
 import {
@@ -78,27 +85,46 @@ function UpstreamFieldSelect({
   )
 }
 
+const OUTPUT_FIELD_TYPE_ITEMS: Array<{ value: OutputFieldType; label: string }> = [
+  { value: "string", label: "Text" },
+  { value: "array", label: "Array" },
+  { value: "object", label: "Object" },
+]
+
 export function OutputFieldsEditor({
   idPrefix,
   value,
   onChange,
 }: {
   idPrefix: string
-  value: string[]
-  onChange: (value: string[]) => void
+  value: OutputFieldDef[]
+  onChange: (value: OutputFieldDef[]) => void
 }) {
-  const rows = value.length > 0 ? value : [""]
+  const rows = value.length > 0 ? value : [{ name: "", type: "string" as const }]
 
-  const updateRow = (index: number, nextValue: string) => {
-    const next = [...rows]
-    next[index] = nextValue
-    onChange(next.map((entry) => entry.trim()).filter(Boolean))
+  const updateRowName = (index: number, nextValue: string) => {
+    onChange(
+      rows.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, name: nextValue } : row
+      )
+    )
   }
 
-  const addRow = () => onChange([...rows.filter(Boolean), ""])
+  const updateRowType = (index: number, nextType: OutputFieldType) => {
+    onChange(
+      rows.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, type: nextType } : row
+      )
+    )
+  }
+
+  const addRow = () => {
+    onChange([...rows, { name: "", type: "string" }])
+  }
 
   const removeRow = (index: number) => {
-    onChange(rows.filter((_, rowIndex) => rowIndex !== index).filter(Boolean))
+    const nextRows = rows.filter((_, rowIndex) => rowIndex !== index)
+    onChange(nextRows.length > 0 ? nextRows : [{ name: "", type: "string" }])
   }
 
   return (
@@ -107,6 +133,7 @@ export function OutputFieldsEditor({
         <TableHeader>
           <TableRow>
             <TableHead>Output field</TableHead>
+            <TableHead className="w-32">Type</TableHead>
             <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
@@ -116,17 +143,48 @@ export function OutputFieldsEditor({
               <TableCell>
                 <Input
                   id={`${idPrefix}-output-${index}`}
-                  value={row}
+                  value={row.name}
                   placeholder="field name"
-                  onChange={(event) => updateRow(index, event.target.value)}
+                  onChange={(event) => updateRowName(index, event.target.value)}
                 />
+              </TableCell>
+              <TableCell>
+                <Select
+                  items={OUTPUT_FIELD_TYPE_ITEMS}
+                  value={row.type}
+                  onValueChange={(next) => {
+                    if (
+                      next === "string" ||
+                      next === "array" ||
+                      next === "object"
+                    ) {
+                      updateRowType(index, next)
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    id={`${idPrefix}-output-type-${index}`}
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false} side="bottom">
+                    <SelectGroup>
+                      {OUTPUT_FIELD_TYPE_ITEMS.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </TableCell>
               <TableCell>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  disabled={rows.length <= 1 && !row}
+                  disabled={rows.length <= 1 && !row.name}
                   onClick={() => removeRow(index)}
                   aria-label="Remove field"
                 >
@@ -235,30 +293,80 @@ export function FieldRenameTableEditor({
 export function FieldEditTableEditor({
   idPrefix,
   value,
+  fieldCount,
   upstreamOptions,
   onChange,
 }: {
   idPrefix: string
   value: FieldEditRow[]
+  fieldCount: number
   upstreamOptions: UpstreamFieldOption[]
   onChange: (value: FieldEditRow[]) => void
 }) {
-  const rows = value.length > 0 ? value : [{ name: "", sourceField: "" }]
+  const rows = normalizeFieldEditRows(value, fieldCount)
 
   const updateRow = (index: number, patch: Partial<FieldEditRow>) => {
-    const next = rows.map((row, rowIndex) =>
-      rowIndex === index ? { ...row, ...patch } : row
+    onChange(
+      rows.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, ...patch } : row
+      )
     )
-    onChange(next)
+  }
+
+  const setFieldCount = (count: number) => {
+    const nextCount = Math.min(
+      MAX_EDIT_FIELD_COUNT,
+      Math.max(1, Math.floor(count))
+    )
+    onChange(normalizeFieldEditRows(rows, nextCount))
+  }
+
+  const removeRow = (index: number) => {
+    if (fieldCount <= 1) {
+      return
+    }
+
+    const nextRows = rows.filter((_, rowIndex) => rowIndex !== index)
+    onChange(normalizeFieldEditRows(nextRows, fieldCount - 1))
   }
 
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {fieldCount} input/output pair{fieldCount === 1 ? "" : "s"}
+        </p>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            disabled={fieldCount <= 1}
+            onClick={() => setFieldCount(fieldCount - 1)}
+            aria-label="Remove mapping pair"
+          >
+            -
+          </Button>
+          <span className="min-w-6 text-center text-sm tabular-nums">
+            {fieldCount}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            disabled={fieldCount >= MAX_EDIT_FIELD_COUNT}
+            onClick={() => setFieldCount(fieldCount + 1)}
+            aria-label="Add mapping pair"
+          >
+            +
+          </Button>
+        </div>
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Field</TableHead>
-            <TableHead>Value from previous node</TableHead>
+            <TableHead>Output field</TableHead>
+            <TableHead>Source field</TableHead>
             <TableHead className="w-10" />
           </TableRow>
         </TableHeader>
@@ -269,7 +377,7 @@ export function FieldEditTableEditor({
                 <Input
                   id={`${idPrefix}-edit-name-${index}`}
                   value={row.name}
-                  placeholder="field name"
+                  placeholder={`output ${index + 1}`}
                   onChange={(event) => updateRow(index, { name: event.target.value })}
                 />
               </TableCell>
@@ -286,10 +394,9 @@ export function FieldEditTableEditor({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  onClick={() =>
-                    onChange(rows.filter((_, rowIndex) => rowIndex !== index))
-                  }
-                  aria-label="Remove field"
+                  disabled={fieldCount <= 1}
+                  onClick={() => removeRow(index)}
+                  aria-label="Remove field mapping"
                 >
                   <TrashIcon />
                 </Button>
@@ -302,15 +409,15 @@ export function FieldEditTableEditor({
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => onChange([...rows, { name: "", sourceField: "" }])}
-        disabled={upstreamOptions.length === 0}
+        onClick={() => setFieldCount(fieldCount + 1)}
+        disabled={fieldCount >= MAX_EDIT_FIELD_COUNT}
       >
         <PlusIcon data-icon="inline-start" />
-        Add field
+        Add mapping
       </Button>
       {upstreamOptions.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          Connect a previous node to map values from its output.
+          Connect a previous node to pick source fields from its output.
         </p>
       ) : null}
     </div>
@@ -320,19 +427,44 @@ export function FieldEditTableEditor({
 export function SwitchRulesEditor({
   idPrefix,
   value,
+  upstreamOptions,
   onChange,
 }: {
   idPrefix: string
   value: SwitchCaseRule[]
+  upstreamOptions: UpstreamFieldOption[]
   onChange: (value: SwitchCaseRule[]) => void
 }) {
+  const operatorItems = React.useMemo(
+    () =>
+      COMPARISON_OPERATORS.map((option) => ({
+        label: option.label,
+        value: option.value,
+      })),
+    []
+  )
+
+  const updateRule = (index: number, patch: Partial<SwitchCaseRule>) => {
+    onChange(
+      value.map((rule, rowIndex) =>
+        rowIndex === index ? { ...rule, ...patch } : rule
+      )
+    )
+  }
+
   return (
     <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Cases are checked in order. Each rule compares one upstream JSON field
+        using a predefined operator — no JavaScript expressions.
+      </p>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Output</TableHead>
-            <TableHead>Condition</TableHead>
+            <TableHead>Field</TableHead>
+            <TableHead>Operator</TableHead>
+            <TableHead>Value</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -341,25 +473,70 @@ export function SwitchRulesEditor({
               <TableCell className="align-top text-xs font-medium">
                 {rule.label}
               </TableCell>
-              <TableCell>
-                <Input
-                  id={`${idPrefix}-switch-${index}`}
-                  value={rule.condition}
-                  placeholder="When should this output fire?"
-                  onChange={(event) => {
-                    const next = value.map((entry, rowIndex) =>
-                      rowIndex === index
-                        ? { ...entry, condition: event.target.value }
-                        : entry
-                    )
-                    onChange(next)
-                  }}
-                />
-              </TableCell>
+              {isSwitchDefaultCase(rule) ? (
+                <TableCell colSpan={3} className="align-top text-xs text-muted-foreground">
+                  Used when no other case matches.
+                </TableCell>
+              ) : (
+                <>
+                  <TableCell className="align-top">
+                    <UpstreamFieldSelect
+                      id={`${idPrefix}-switch-field-${index}`}
+                      value={rule.field}
+                      options={upstreamOptions}
+                      onChange={(field) => updateRule(index, { field })}
+                    />
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <Select
+                      items={operatorItems}
+                      value={rule.operator}
+                      onValueChange={(next) => {
+                        if (typeof next === "string") {
+                          updateRule(index, {
+                            operator: next as SwitchCaseRule["operator"],
+                          })
+                        }
+                      }}
+                    >
+                      <SelectTrigger
+                        id={`${idPrefix}-switch-operator-${index}`}
+                        className="w-full"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent alignItemWithTrigger={false} side="bottom">
+                        <SelectGroup>
+                          {operatorItems.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <Input
+                      id={`${idPrefix}-switch-value-${index}`}
+                      value={rule.compareValue}
+                      placeholder="Comparison value"
+                      onChange={(event) =>
+                        updateRule(index, { compareValue: event.target.value })
+                      }
+                    />
+                  </TableCell>
+                </>
+              )}
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      {upstreamOptions.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Connect a previous node to pick fields from its JSON output.
+        </p>
+      ) : null}
     </div>
   )
 }

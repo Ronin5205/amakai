@@ -12,6 +12,7 @@ import {
 import { NodeInspector } from "@/components/design/node-inspector"
 import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
 import type { DataTableSummary } from "@/lib/domain/data-table"
+import type { PlaygroundStep } from "@/lib/engine/types"
 import { Button } from "@amakai/shared/components/ui/button"
 import { cn } from "@amakai/shared/lib/utils"
 
@@ -26,6 +27,7 @@ export interface EditorNodeInspectorPanelProps {
   node: WorkflowNode | null
   selectedCount: number
   dataTables?: DataTableSummary[]
+  validationSteps?: PlaygroundStep[]
   onLabelChange: (label: string) => void
   onConfigChange: (key: string, value: unknown) => void
   onRemove: () => void
@@ -66,6 +68,7 @@ export function EditorNodeInspectorPanel({
   node,
   selectedCount,
   dataTables,
+  validationSteps,
   onLabelChange,
   onConfigChange,
   onRemove,
@@ -266,6 +269,7 @@ export function EditorNodeInspectorPanel({
           workflow={workflow}
           selectedCount={selectedCount}
           dataTables={dataTables}
+          validationSteps={validationSteps}
           onLabelChange={onLabelChange}
           onConfigChange={onConfigChange}
           onRemove={onRemove}

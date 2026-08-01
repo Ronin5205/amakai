@@ -4,6 +4,7 @@ import type {
   WorkflowNode,
 } from "@/lib/domain/workflow"
 import { buildDefaultSwitchCases } from "@/lib/design/upstream-fields"
+import { COMPARISON_OPERATORS } from "@/lib/design/comparison-rules"
 
 export type ComponentVariantSpec = {
   catalogItemId: string
@@ -46,13 +47,10 @@ const STANDARD_OUTPUT = output(
   "Passes processed data to the next connected step."
 )
 
-const COMPARISON_OPERATORS = [
-  { label: "equals", value: "equals" },
-  { label: "not equals", value: "not_equals" },
-  { label: "greater than", value: "greater_than" },
-  { label: "less than", value: "less_than" },
-  { label: "contains", value: "contains" },
-]
+import {
+  buildEditFieldPorts,
+  normalizeFieldEditRows,
+} from "@/lib/design/edit-fields"
 
 function buildSwitchOutputs(node: WorkflowNode): NodePort[] {
   const caseCount = Math.max(2, Number(node.config.caseCount ?? 2))
@@ -109,7 +107,8 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
         key: "outputFields",
         label: "Output fields",
         type: "output-fields",
-        description: "Fields this trigger makes available to the next node.",
+        description:
+          "Fields this trigger adds to the payload. Array fields accept comma-separated values in Testing. Use Array for collections consumed by Loop Over Items.",
       },
     ],
   },
@@ -198,28 +197,44 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
     outputs: [STANDARD_OUTPUT],
     configSchema: [
       {
+        key: "fieldCount",
+        label: "Field mappings",
+        type: "number",
+        defaultValue: 1,
+        description:
+          "Number of input/output pairs. Each pair maps one upstream value to one output field.",
+      },
+      {
         key: "fieldEdits",
-        label: "Fields",
+        label: "Mappings",
         type: "field-edit-table",
-        description: "Map output fields to values from the previous node.",
+        description:
+          "For each row: pick a source field (input) and name the edited output field.",
       },
     ],
+    resolvePorts: (node) => buildEditFieldPorts(node),
   },
   "action.merge": {
     catalogItemId: "action.merge",
     inputs: [
       input(
         "input-a",
-        "Input A",
-        "First branch to combine. Merge requires at least two incoming connections."
+        "Branch A",
+        "First finished path (e.g. true branch or parallel branch A)."
       ),
       input(
         "input-b",
-        "Input B",
-        "Second branch to combine. Merge requires at least two incoming connections."
+        "Branch B",
+        "Second finished path (e.g. false branch or parallel branch B)."
       ),
     ],
-    outputs: [STANDARD_OUTPUT],
+    outputs: [
+      output(
+        "main-out",
+        "Combined",
+        "Single payload after both branches have completed."
+      ),
+    ],
     configSchema: [],
   },
   "action.aggregate": {
@@ -228,34 +243,19 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
     outputs: [STANDARD_OUTPUT],
     configSchema: [
       {
+        key: "itemsField",
+        label: "Items list",
+        type: "upstream-field",
+        description:
+          "Optional. Array field to group (e.g. orders, dataTableRows). Auto-detected when empty.",
+      },
+      {
         key: "groupByField",
-        label: "Group by",
+        label: "Group by field",
         type: "upstream-field",
         required: true,
-      },
-    ],
-  },
-  "action.summarize": {
-    catalogItemId: "action.summarize",
-    inputs: [STANDARD_INPUT],
-    outputs: [STANDARD_OUTPUT],
-    configSchema: [
-      {
-        key: "valueField",
-        label: "Value field",
-        type: "upstream-field",
-        required: true,
-      },
-      {
-        key: "metric",
-        label: "Metric",
-        type: "select",
-        options: [
-          { label: "Count", value: "count" },
-          { label: "Sum", value: "sum" },
-          { label: "Average", value: "average" },
-        ],
-        defaultValue: "count",
+        description:
+          "Property on each item used as the group key — like SQL GROUP BY.",
       },
     ],
   },
@@ -323,8 +323,9 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
         key: "operator",
         label: "Operator",
         type: "select",
-        options: COMPARISON_OPERATORS,
+        options: [...COMPARISON_OPERATORS],
         defaultValue: "equals",
+        description: "Predefined comparison — no JavaScript expressions.",
       },
       {
         key: "compareValue",
@@ -349,18 +350,22 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
         label: "Cases",
         type: "number",
         defaultValue: 2,
+        description: "Number of named outputs evaluated top to bottom.",
       },
       {
         key: "includeDefaultOutput",
         label: "Include default output",
         type: "boolean",
         defaultValue: true,
+        description:
+          "When enabled, unmatched payloads route to Default after all cases are checked.",
       },
       {
         key: "switchCases",
-        label: "Output rules",
+        label: "Case rules",
         type: "switch-rules",
-        description: "Define when each output should fire.",
+        description:
+          "Each case compares one upstream JSON field using a predefined operator (equals, contains, greater than, etc.). No JavaScript or custom expressions — the first matching case wins.",
       },
     ],
     resolvePorts: (node) => ({
@@ -389,8 +394,9 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
         key: "operator",
         label: "Operator",
         type: "select",
-        options: COMPARISON_OPERATORS,
+        options: [...COMPARISON_OPERATORS],
         defaultValue: "equals",
+        description: "Predefined comparison — no JavaScript expressions.",
       },
       {
         key: "compareValue",
@@ -421,7 +427,8 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
         label: "Collection field",
         type: "upstream-field",
         required: true,
-        description: "List field from the previous node to iterate over.",
+        description:
+          "Array or list field from the previous node. Accepts JSON arrays, comma-separated values, or single objects.",
       },
     ],
   },
@@ -441,6 +448,53 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
         label: "Wait (ms)",
         type: "number",
         defaultValue: 1000,
+        description:
+          "Pauses execution until the configured duration has elapsed, then continues on Resume.",
+      },
+    ],
+  },
+  "approval.base": {
+    catalogItemId: "approval.base",
+    inputs: [STANDARD_INPUT],
+    outputs: [
+      output(
+        "approved",
+        "Approved",
+        "Continues when the request is approved.",
+        "branch"
+      ),
+      output(
+        "rejected",
+        "Rejected",
+        "Continues when the request is rejected.",
+        "branch"
+      ),
+    ],
+    configSchema: [
+      {
+        key: "approverType",
+        label: "Approval type",
+        type: "select",
+        defaultValue: "manual",
+        options: [
+          { label: "Manual (portal)", value: "manual" },
+          { label: "Email", value: "email" },
+          { label: "Role", value: "role" },
+        ],
+        description:
+          "How the approver is assigned. Manual pauses until someone approves in the portal.",
+      },
+      {
+        key: "approverEmail",
+        label: "Approver email",
+        type: "string",
+        placeholder: "approver@company.com",
+      },
+      {
+        key: "approverRole",
+        label: "Approver role",
+        type: "string",
+        placeholder: "Manager",
       },
     ],
   },
@@ -498,6 +552,18 @@ export function getDefaultVariantConfig(catalogItemId: string) {
     const caseCount = Math.max(2, Number(config.caseCount ?? 2))
     const includeDefault = config.includeDefaultOutput !== false
     config.switchCases = buildDefaultSwitchCases(caseCount, includeDefault)
+  }
+
+  if (catalogItemId === "action.edit-fields") {
+    const fieldCount = Math.max(1, Number(config.fieldCount ?? 1))
+    config.fieldCount = fieldCount
+    config.fieldEdits = normalizeFieldEditRows(config.fieldEdits, fieldCount)
+  }
+
+  if (catalogItemId === "trigger.workflow") {
+    config.outputFieldDefs = [{ name: "payload", type: "object" }]
+    config.outputFields = ["payload"]
+    config.outputFieldTypes = { payload: "object" }
   }
 
   return config

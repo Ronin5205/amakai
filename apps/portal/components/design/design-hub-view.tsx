@@ -212,12 +212,16 @@ export function DesignHubView({
   const {
     status: validationStatus,
     logs: validationLogs,
+    steps: validationSteps,
     nodeStates: validationNodeStates,
     activeEdgeId: validationActiveEdgeId,
     isDeployable,
     panelOpen: validationPanelOpen,
     setPanelOpen: setValidationPanelOpen,
     runValidation,
+    submitApproval: submitValidationApproval,
+    pendingApproval: validationPendingApproval,
+    pendingWait: validationPendingWait,
     isRunning: isValidating,
   } = useWorkflowValidation(workflow)
 
@@ -564,6 +568,7 @@ export function DesignHubView({
           node={selectedNode}
           selectedCount={selectedNodeIds.length}
           dataTables={dataTables}
+          validationSteps={validationSteps}
           onLabelChange={(label) => {
             if (selectedNode) {
               updateNodeLabel(selectedNode.id, label)
@@ -621,8 +626,12 @@ export function DesignHubView({
         onOpenChange={setValidationPanelOpen}
         status={validationStatus}
         logs={validationLogs}
+        steps={validationSteps}
         isRunning={isValidating}
+        pendingApproval={validationPendingApproval}
+        pendingWait={validationPendingWait}
         onRunValidation={runValidation}
+        onSubmitApproval={submitValidationApproval}
       />
 
       <Sheet open={aiOpen} onOpenChange={handleAiOpenChange}>

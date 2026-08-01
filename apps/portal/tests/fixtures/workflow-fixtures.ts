@@ -60,3 +60,36 @@ export function sequentialEdge(
     targetPort: ports?.targetPort ?? "main-in",
   })
 }
+
+export function waitNode(
+  id: string,
+  durationMs = 1000,
+  label = "Wait"
+): WorkflowNode {
+  return workflowNode({
+    id,
+    label,
+    kind: "loop",
+    config: {
+      catalogItemId: "loop.wait",
+      durationMs,
+    },
+    position: { x: 240, y: 0 },
+  })
+}
+export function loopOverItemsNode(
+  id: string,
+  collectionField: string,
+  label = "Loop Over Items"
+): WorkflowNode {
+  return workflowNode({
+    id,
+    label,
+    kind: "loop",
+    config: {
+      catalogItemId: "loop.over-items",
+      collectionField,
+    },
+    position: { x: 240, y: 0 },
+  })
+}

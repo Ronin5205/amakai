@@ -122,21 +122,25 @@ export function resolveOutputPortId(
   node: WorkflowNode,
   portId?: string
 ) {
-  if (portId) {
-    return portId
+  const definition = resolveNodeDefinition(node)
+  const firstOutput = definition.outputs[0]?.id
+
+  if (!portId || portId === "main-out") {
+    return firstOutput ?? "main-out"
   }
 
-  const definition = resolveNodeDefinition(node)
-  return definition.outputs[0]?.id
+  return portId
 }
 
 export function resolveInputPortId(node: WorkflowNode, portId?: string) {
-  if (portId) {
-    return portId
+  const definition = resolveNodeDefinition(node)
+  const firstInput = definition.inputs[0]?.id
+
+  if (!portId || portId === "main-in") {
+    return firstInput ?? "main-in"
   }
 
-  const definition = resolveNodeDefinition(node)
-  return definition.inputs[0]?.id
+  return portId
 }
 
 export function getNodePortPositionById(

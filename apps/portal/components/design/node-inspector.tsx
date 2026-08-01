@@ -4,7 +4,10 @@ import * as React from "react"
 import { TrashIcon } from "@phosphor-icons/react"
 
 import { NodeConfigFields } from "@/components/design/node-config-fields"
+import { NodeRuntimePayloadSection } from "@/components/design/payload-inspector"
 import { StatusBadge } from "@/components/portal/status-badge"
+import { findLatestNodeStepPayloads } from "@/lib/engine/playground-payloads"
+import type { PlaygroundStep } from "@/lib/engine/types"
 import { getCatalogItemId, resolveNodeDefinition } from "@/lib/design/resolve-node-definition"
 import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
 import type { DataTableSummary } from "@/lib/domain/data-table"
@@ -21,6 +24,7 @@ export interface NodeInspectorProps {
   workflow: Workflow
   selectedCount: number
   dataTables?: DataTableSummary[]
+  validationSteps?: PlaygroundStep[]
   onLabelChange: (label: string) => void
   onConfigChange: (key: string, value: unknown) => void
   onRemove: () => void
@@ -31,6 +35,7 @@ export function NodeInspector({
   workflow,
   selectedCount,
   dataTables,
+  validationSteps = [],
   onLabelChange,
   onConfigChange,
   onRemove,
@@ -73,6 +78,7 @@ export function NodeInspector({
   const definition = resolveNodeDefinition(node)
   const catalogItemId = getCatalogItemId(node)
   const hasConfig = definition.configSchema.length > 0
+  const runtimePayloads = findLatestNodeStepPayloads(validationSteps, node.id)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -112,6 +118,14 @@ export function NodeInspector({
                 onChange={onConfigChange}
               />
             ) : null}
+
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium">Runtime JSON</h3>
+              <NodeRuntimePayloadSection
+                input={runtimePayloads?.input}
+                output={runtimePayloads?.output}
+              />
+            </div>
           </FieldGroup>
 
           <Button variant="outline" size="sm" onClick={onRemove}>

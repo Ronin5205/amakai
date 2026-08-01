@@ -1,4 +1,5 @@
 import type { WorkflowNode } from "@/lib/domain/workflow"
+import { readJsonPath } from "@/lib/design/json-value"
 
 /** JSON object passed between nodes when a port fires. */
 export type WorkflowPayload = Record<string, unknown>
@@ -33,9 +34,9 @@ export function upstreamFieldRefToJsonPath(value: unknown): string | null {
   return parsed.fieldName
 }
 
-/** Read a value from a JSON payload using a simple field key. */
+/** Read a value from a JSON payload using a simple field key or nested path. */
 export function readPayloadField(payload: WorkflowPayload, fieldName: string) {
-  return payload[fieldName]
+  return readJsonPath(payload, fieldName)
 }
 
 /** Merge upstream JSON payload with transformed fields for the next node. */

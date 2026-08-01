@@ -15,7 +15,6 @@ This document defines the standard input/output ports for each supported workflo
 | Action | Edit Fields (Set) | 1 | 1 | Single | Adds, removes, or modifies fields. |
 | Action | Merge | 2 (minimum) | 1 | Single | Combines multiple execution branches into one. |
 | Action | Aggregate | 1 | 1 | Single | Aggregates many items into a single item. |
-| Action | Summarize | 1 | 1 | Single | Produces statistics such as totals, counts, averages, etc. |
 | Action | Rename Keys | 1 | 1 | Single | Renames object properties. |
 | Action | Sort | 1 | 1 | Single | Reorders incoming items. |
 | Condition | IF | 1 | 2 | True / False | Routes execution based on a boolean condition. |
@@ -74,7 +73,6 @@ Outputs:
 | Edit Fields (Set) | Input | Output |
 | Merge | Input A, Input B | Output |
 | Aggregate | Input | Output |
-| Summarize | Input | Output |
 | Rename Keys | Input | Output |
 | Sort | Input | Output |
 | IF | Input | True, False |

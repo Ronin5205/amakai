@@ -138,10 +138,27 @@ export const NODE_DEFINITIONS: Record<NodeKind, NodeDefinition> = {
     ],
     configSchema: [
       {
+        key: "approverType",
+        label: "Approval type",
+        type: "select",
+        defaultValue: "manual",
+        options: [
+          { label: "Manual (portal)", value: "manual" },
+          { label: "Email", value: "email" },
+          { label: "Role", value: "role" },
+        ],
+      },
+      {
         key: "approverEmail",
-        label: "Approver",
+        label: "Approver email",
         type: "string",
         placeholder: "approver@company.com",
+      },
+      {
+        key: "approverRole",
+        label: "Approver role",
+        type: "string",
+        placeholder: "Manager",
       },
     ],
   },

@@ -10,8 +10,10 @@ import {
 import { runPlaygroundValidation } from "@/lib/engine/playground"
 import {
   dataTableNode,
+  loopOverItemsNode,
   sequentialEdge,
   triggerNode,
+  workflowNode,
 } from "@/tests/fixtures/workflow-fixtures"
 
 const mockedWrite = playgroundDataTableWriteAction as jest.MockedFunction<
@@ -125,5 +127,59 @@ describe("runPlaygroundValidation", () => {
         step.log.message.includes('Read 1 row(s) from "demo_contacts"')
       )
     ).toBe(true)
+  })
+
+  it("iterates loop over items using array trigger payloads", async () => {
+    const trigger = workflowNode({
+      id: "trigger-1",
+      kind: "trigger",
+      label: "Trigger",
+      config: {
+        catalogItemId: "trigger.workflow",
+        triggerType: "manual",
+        outputFields: ["orders"],
+        outputFieldDefs: [{ name: "orders", type: "array" }],
+      },
+      position: { x: 0, y: 0 },
+    })
+    const loop = loopOverItemsNode("loop-1", "trigger-1.orders")
+    const action = workflowNode({
+      id: "action-1",
+      kind: "sequential",
+      label: "Handle item",
+      config: { catalogItemId: "action.code", code: "return item;" },
+      position: { x: 480, y: 0 },
+    })
+
+    const edges = [
+      sequentialEdge(trigger, loop),
+      sequentialEdge(loop, action, { sourcePort: "loop", targetPort: "main-in" }),
+    ]
+
+    const result = await runPlaygroundValidation([trigger, loop, action], edges, {
+      triggerPayloads: {
+        "trigger-1": {
+          orders: [{ orderId: "1" }, { orderId: "2" }],
+        },
+      },
+      capturePayloads: true,
+    })
+
+    expect(result.passed).toBe(true)
+    expect(
+      result.steps.some((step) =>
+        step.log.message.includes("Looping over 2 item(s)")
+      )
+    ).toBe(true)
+    expect(
+      result.steps.filter(
+        (step) =>
+          step.type === "node_exit" &&
+          step.log.nodeLabel === "Handle item" &&
+          step.inputPayload &&
+          typeof step.inputPayload === "object" &&
+          (step.inputPayload as { loopIndex?: number }).loopIndex !== undefined
+      )
+    ).toHaveLength(2)
   })
 })

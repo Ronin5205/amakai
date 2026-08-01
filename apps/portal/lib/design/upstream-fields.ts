@@ -1,4 +1,9 @@
 import { getCatalogItemId } from "@/lib/design/component-variant-definitions"
+import {
+  getEditFieldCount,
+  normalizeFieldEditRows,
+} from "@/lib/design/edit-fields"
+import { parseOutputFieldDefs } from "@/lib/design/output-fields"
 import type { WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 
 export type UpstreamFieldOption = {
@@ -19,11 +24,11 @@ export type FieldEditRow = {
   sourceField: string
 }
 
-export type SwitchCaseRule = {
-  portId: string
-  label: string
-  condition: string
-}
+export type { SwitchCaseRule } from "@/lib/design/switch-rules"
+export {
+  buildDefaultSwitchCases,
+  normalizeSwitchCases,
+} from "@/lib/design/switch-rules"
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
@@ -93,12 +98,21 @@ export function resolveNodeOutputFields(
   )
 
   if (catalogItemId === "trigger.workflow") {
-    const declared = asStringArray(node.config.outputFields)
-    return declared.length > 0 ? declared : ["payload"]
+    const declared = parseOutputFieldDefs(node.config)
+    if (declared.length > 0) {
+      return declared.map((field) => field.name)
+    }
+    const legacy = asStringArray(node.config.outputFields)
+    return legacy.length > 0 ? legacy : ["payload"]
+  }
+
+  if (catalogItemId === "loop.over-items") {
+    return [...upstreamFields, "item", "loopItem", "loopIndex", "loopTotal"]
   }
 
   if (catalogItemId === "action.edit-fields") {
-    const edits = asEditRows(node.config.fieldEdits)
+    const fieldCount = getEditFieldCount(node.config)
+    const edits = normalizeFieldEditRows(node.config.fieldEdits, fieldCount)
     const names = edits.map((row) => row.name.trim()).filter(Boolean)
     return names.length > 0 ? names : upstreamFields
   }
@@ -127,6 +141,27 @@ export function resolveNodeOutputFields(
     return upstreamFields
   }
 
+  if (catalogItemId === "action.aggregate") {
+    return [
+      ...upstreamFields,
+      "groups",
+      "groupKeys",
+      "groupCount",
+      "itemCount",
+      "aggregatedBy",
+    ]
+  }
+
+  if (catalogItemId === "action.merge") {
+    return [
+      ...upstreamFields,
+      "branchA",
+      "branchB",
+      "mergedAt",
+      "mergeSourceCount",
+    ]
+  }
+
   return upstreamFields
 }
 
@@ -147,52 +182,6 @@ export function resolveUpstreamFieldOptions(
       nodeLabel: upstreamNode.label,
       fieldName,
     }))
-  })
-}
-
-export function buildDefaultSwitchCases(caseCount: number, includeDefault: boolean) {
-  const cases: SwitchCaseRule[] = Array.from({ length: caseCount }, (_, index) => {
-    const caseNumber = index + 1
-    return {
-      portId: `case-${caseNumber}`,
-      label: `Case ${caseNumber}`,
-      condition: "",
-    }
-  })
-
-  if (includeDefault) {
-    cases.push({
-      portId: "default",
-      label: "Default",
-      condition: "",
-    })
-  }
-
-  return cases
-}
-
-export function normalizeSwitchCases(
-  value: unknown,
-  caseCount: number,
-  includeDefault: boolean
-): SwitchCaseRule[] {
-  if (!Array.isArray(value)) {
-    return buildDefaultSwitchCases(caseCount, includeDefault)
-  }
-
-  const parsed = value.filter(
-    (entry): entry is SwitchCaseRule =>
-      typeof entry === "object" &&
-      entry !== null &&
-      typeof (entry as SwitchCaseRule).portId === "string" &&
-      typeof (entry as SwitchCaseRule).label === "string" &&
-      typeof (entry as SwitchCaseRule).condition === "string"
-  )
-
-  const expected = buildDefaultSwitchCases(caseCount, includeDefault)
-  return expected.map((rule) => {
-    const existing = parsed.find((entry) => entry.portId === rule.portId)
-    return existing ?? rule
   })
 }
 

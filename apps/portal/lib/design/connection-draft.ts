@@ -4,11 +4,6 @@ export type ConnectionDraft = {
   side: "input" | "output"
 }
 
-export type ConnectionDraftScreenPoint = {
-  clientX: number
-  clientY: number
-}
-
 export type PendingConnectionPlacement = {
   draft: ConnectionDraft
   worldPoint: { x: number; y: number }

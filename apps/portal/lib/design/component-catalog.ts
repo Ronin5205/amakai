@@ -124,7 +124,7 @@ const BASE_COMPONENTS: ComponentCatalogItem[] = [
     id: "approval.base",
     kind: "approval",
     label: "Approval",
-    description: "Generic approval gate — configure approver in the inspector",
+    description: "Pauses the workflow until an approver accepts or rejects.",
     categoryId: "approval",
     isBase: true,
   },
@@ -173,22 +173,17 @@ export const COMPONENT_VARIANTS: ComponentCatalogItem[] = [
   {
     id: "action.merge",
     kind: "sequential",
-    label: "Merge",
-    description: "Combines multiple execution branches into one.",
+    label: "Combine Branches",
+    description:
+      "Synchronizes two paths after Parallel or IF — waits for both, then merges payloads.",
     categoryId: "action",
   },
   {
     id: "action.aggregate",
     kind: "sequential",
-    label: "Aggregate",
-    description: "Aggregates many items into a single item.",
-    categoryId: "action",
-  },
-  {
-    id: "action.summarize",
-    kind: "sequential",
-    label: "Summarize",
-    description: "Produces statistics such as totals, counts, averages, etc.",
+    label: "Group Items",
+    description:
+      "Groups rows in a list by a shared field (like SQL GROUP BY). Use after Loop or Read Table.",
     categoryId: "action",
   },
   {
@@ -217,7 +212,8 @@ export const COMPONENT_VARIANTS: ComponentCatalogItem[] = [
     id: "condition.switch",
     kind: "conditional",
     label: "Switch",
-    description: "Creates one output for each configured case.",
+    description:
+      "Routes execution to the first matching case. Each case compares an upstream JSON field using predefined operators (equals, contains, greater than, etc.) — not JavaScript.",
     categoryId: "condition",
     defaultConfig: { caseCount: 2, includeDefaultOutput: true },
   },
@@ -232,7 +228,7 @@ export const COMPONENT_VARIANTS: ComponentCatalogItem[] = [
     id: "loop.over-items",
     kind: "loop",
     label: "Loop Over Items",
-    description: "Iterates over a collection and signals completion.",
+    description: "Iterates over an array collection and signals completion.",
     categoryId: "loop",
   },
   {
@@ -294,16 +290,4 @@ export function getComponentCatalogGroups(
 
 export function getComponentCatalogItemById(id: string) {
   return COMPONENT_CATALOG.find((item) => item.id === id)
-}
-
-/** @deprecated Prefer getComponentCatalogItemById for palette items. */
-export function getComponentCatalogItem(kind: NodeKind) {
-  return COMPONENT_CATALOG.find((item) => item.kind === kind && item.isBase)
-}
-
-export function getBaseComponentCategoryId(
-  kind: NodeKind
-): BaseComponentCategoryId | null {
-  const category = COMPONENT_CATEGORIES.find((entry) => entry.baseKind === kind)
-  return (category?.id as BaseComponentCategoryId | undefined) ?? null
 }

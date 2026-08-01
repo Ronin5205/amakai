@@ -1,6 +1,7 @@
 import {
   applyFieldEditsToPayload,
   applyRenamesToPayload,
+  applySingleFieldEdit,
   buildDataTableRowFromPayload,
   buildTriggerPlaygroundPayload,
   countPopulatedRowFields,
@@ -97,6 +98,23 @@ describe("playground-data-table", () => {
 
       expect(applyFieldEditsToPayload(payload, node)).toMatchObject({
         amount: 42,
+        total: 42,
+      })
+    })
+  })
+
+  describe("applySingleFieldEdit", () => {
+    it("applies one mapping without affecting other rows", () => {
+      const payload = { amount: 42, currency: "USD" }
+
+      expect(
+        applySingleFieldEdit(payload, {
+          name: "total",
+          sourceField: "amount",
+        })
+      ).toEqual({
+        amount: 42,
+        currency: "USD",
         total: 42,
       })
     })

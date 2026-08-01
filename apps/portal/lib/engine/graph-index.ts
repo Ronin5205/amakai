@@ -70,5 +70,15 @@ export function getOutgoingEdges(
     return []
   }
 
-  return map.get(`${node.id}:${port}`) ?? []
+  const edges = map.get(`${node.id}:${port}`) ?? []
+  if (edges.length > 0) {
+    return edges
+  }
+
+  const firstOutput = resolveOutputPortId(node)
+  if (port === firstOutput && port !== "main-out") {
+    return map.get(`${node.id}:main-out`) ?? []
+  }
+
+  return []
 }

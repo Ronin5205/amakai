@@ -1,9 +1,18 @@
 import type { TableColumnMapRow } from "@/lib/domain/data-table"
 import {
+  ensureJsonObject,
+  resolvePayloadField as resolveJsonPayloadField,
+} from "@/lib/design/json-value"
+import {
+  parseOutputFieldDefs,
+  type OutputFieldType,
+} from "@/lib/design/output-fields"
+import {
   asEditRows,
   asRenameRows,
   asStringArray,
   asTableColumnMapRows,
+  type FieldEditRow,
 } from "@/lib/design/upstream-fields"
 import type { WorkflowNode } from "@/lib/domain/workflow"
 
@@ -11,22 +20,57 @@ export function resolvePayloadField(
   payload: unknown,
   sourceField: string
 ): unknown {
-  if (!sourceField.trim()) {
-    return undefined
-  }
-
-  const fieldName = sourceField.includes(".")
-    ? sourceField.slice(sourceField.indexOf(".") + 1)
-    : sourceField
-
-  if (typeof payload !== "object" || payload === null) {
-    return undefined
-  }
-
-  return (payload as Record<string, unknown>)[fieldName]
+  return resolveJsonPayloadField(payload, sourceField)
 }
 
-function playgroundSampleValue(fieldName: string, index = 0): unknown {
+function playgroundSampleArrayValue(fieldName: string): unknown[] {
+  const lower = fieldName.toLowerCase()
+
+  if (lower.includes("order")) {
+    return [
+      { orderId: "ord-1", amount: 120, status: "pending" },
+      { orderId: "ord-2", amount: 85, status: "pending" },
+    ]
+  }
+
+  if (
+    lower.includes("item") ||
+    lower.includes("row") ||
+    lower.includes("record") ||
+    lower.includes("entry")
+  ) {
+    return [
+      { id: "item-1", name: "Item 1" },
+      { id: "item-2", name: "Item 2" },
+    ]
+  }
+
+  return [
+    { id: `${fieldName}-1`, value: "sample 1" },
+    { id: `${fieldName}-2`, value: "sample 2" },
+  ]
+}
+
+function playgroundSampleObjectValue(fieldName: string): Record<string, unknown> {
+  return {
+    id: `demo-${fieldName}`,
+    value: `sample_${fieldName}`,
+  }
+}
+
+function playgroundSampleValue(
+  fieldName: string,
+  index = 0,
+  fieldType: OutputFieldType = "string"
+): unknown {
+  if (fieldType === "array") {
+    return playgroundSampleArrayValue(fieldName)
+  }
+
+  if (fieldType === "object") {
+    return playgroundSampleObjectValue(fieldName)
+  }
+
   const lower = fieldName.toLowerCase()
 
   if (lower.includes("email")) {
@@ -60,20 +104,57 @@ function playgroundSampleValue(fieldName: string, index = 0): unknown {
   return `sample_${fieldName}`
 }
 
-export function buildTriggerPlaygroundPayload(node: WorkflowNode) {
-  const outputFields = asStringArray(node.config.outputFields)
-  const samples = Object.fromEntries(
-    outputFields.map((field, index) => [field, playgroundSampleValue(field, index)])
+export function buildTriggerPayloadFromValues(
+  node: WorkflowNode,
+  values: Record<string, unknown> = {},
+  options?: { fillMissingWithSamples?: boolean }
+) {
+  const fieldDefs = parseOutputFieldDefs(node.config)
+  const outputFields =
+    fieldDefs.length > 0 ? fieldDefs : asStringArray(node.config.outputFields).map((name) => ({
+      name,
+      type: "string" as const,
+    }))
+
+  const fieldValues = Object.fromEntries(
+    outputFields.map((field, index) => {
+      if (field.name in values) {
+        return [field.name, values[field.name]]
+      }
+      if (options?.fillMissingWithSamples) {
+        return [field.name, playgroundSampleValue(field.name, index, field.type)]
+      }
+      return [field.name, undefined]
+    })
+  )
+
+  const resolved = Object.fromEntries(
+    Object.entries(fieldValues).filter(([, value]) => value !== undefined)
   )
 
   return mergePayload(
     { playground: true },
     {
-      ...samples,
+      ...resolved,
       triggeredAt: new Date().toISOString(),
       triggerType: String(node.config.triggerType ?? "manual"),
     }
   )
+}
+
+export function buildTriggerPlaygroundPayload(node: WorkflowNode) {
+  return buildTriggerPayloadFromValues(node, {}, { fillMissingWithSamples: true })
+}
+
+export function applySingleFieldEdit(payload: unknown, row: FieldEditRow) {
+  const name = row.name.trim()
+  if (!name || !row.sourceField.trim()) {
+    return payload
+  }
+
+  return mergePayload(payload, {
+    [name]: resolvePayloadField(payload, row.sourceField),
+  })
 }
 
 export function applyFieldEditsToPayload(
@@ -81,17 +162,13 @@ export function applyFieldEditsToPayload(
   node: WorkflowNode
 ) {
   const edits = asEditRows(node.config.fieldEdits)
-  const patch: Record<string, unknown> = {}
+  let next = payload
 
   for (const edit of edits) {
-    const name = edit.name.trim()
-    if (!name || !edit.sourceField.trim()) {
-      continue
-    }
-    patch[name] = resolvePayloadField(payload, edit.sourceField)
+    next = applySingleFieldEdit(next, edit)
   }
 
-  return mergePayload(payload, patch)
+  return next
 }
 
 export function applyRenamesToPayload(payload: unknown, node: WorkflowNode) {
@@ -153,12 +230,7 @@ export function mergePayload(
   payload: unknown,
   patch: Record<string, unknown>
 ) {
-  const base =
-    typeof payload === "object" && payload !== null
-      ? (payload as Record<string, unknown>)
-      : {}
-
-  return { ...base, ...patch }
+  return { ...ensureJsonObject(payload), ...patch }
 }
 
 export function getDataTableOperation(node: WorkflowNode) {

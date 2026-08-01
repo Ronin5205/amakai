@@ -206,7 +206,7 @@ Keep the data accessor as the source of truth; realtime handlers should call the
 
 ### 6. AI / workflow engine (future)
 
-SDLC sections 7–10 describe services (AI Planning Engine, Workflow Engine, Validation Engine) that are **not** in this repo yet. The portal UI anticipates their outputs via domain types in `lib/domain/planning.ts`, `workflow.ts`, and `validation.ts`. When those services exist:
+SDLC sections 7–10 describe services (AI Planning Engine, Workflow Engine, Validation Engine) that are **not** in this repo yet. The portal UI anticipates their outputs via domain types in `lib/domain/planning.ts` and `workflow.ts`. Playground validation runs in-process via `lib/engine/playground.ts`. When those services exist:
 
 - Expose them via API routes or Edge Functions
 - Data accessors call those endpoints instead of Supabase tables where appropriate

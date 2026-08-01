@@ -10,6 +10,7 @@ import {
   CubeIcon,
   CurrencyCircleDollarIcon,
   DotsThreeIcon,
+  FlaskIcon,
   FlowArrowIcon,
   GaugeIcon,
   GearIcon,
@@ -63,6 +64,11 @@ export const portalNavigation: PortalNavItem[] = [
         title: "Tables",
         href: "/design/tables",
         icon: TableIcon,
+      },
+      {
+        title: "Testing",
+        href: "/design/testing",
+        icon: FlaskIcon,
       },
     ],
   },
@@ -280,6 +286,10 @@ export function isNavItemActive(
         pathname === "/design/tables" ||
         pathname.startsWith("/design/tables/")
       )
+    }
+
+    if (hrefPath === "/design/testing") {
+      return pathname === "/design/testing"
     }
 
     return true

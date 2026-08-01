@@ -2,21 +2,10 @@ import type { WorkflowTemplate } from "@/lib/domain/template"
 import type { NodeConfig, WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 import { getComponentCatalogItemById } from "@/lib/design/component-catalog"
 import { createNodeFromCatalogItem } from "@/lib/design/node-utils"
-import { buildDefaultSwitchCases } from "@/lib/design/upstream-fields"
 import { createEdge } from "@/lib/design/workflow-graph"
 
 function fieldRef(nodeId: string, fieldName: string) {
   return `${nodeId}.${fieldName}`
-}
-
-function tableColumnMappings(
-  sourceNodeId: string,
-  columns: Array<{ columnKey: string; field: string }>
-) {
-  return columns.map(({ columnKey, field }) => ({
-    columnKey,
-    sourceField: fieldRef(sourceNodeId, field),
-  }))
 }
 
 function templateNode(
@@ -53,633 +42,325 @@ function connect(
   return createEdge(source, target, { sourcePort, targetPort })
 }
 
-function chainMain(nodes: WorkflowNode[]): WorkflowEdge[] {
-  return nodes.slice(0, -1).map((node, index) =>
-    connect(node.id, nodes[index + 1].id)
-  )
-}
-
 function buildGraph(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
   return { nodes, edges }
 }
 
-const invoiceNodes = {
-  trigger: templateNode("tmpl-inv-1", "trigger.workflow", "Invoice received", {
-    triggerType: "webhook",
-    outputFields: ["invoiceId", "amount", "vendor", "dueDate"],
-  }),
-  normalize: templateNode("tmpl-inv-2", "action.edit-fields", "Normalize fields", {
-    fieldEdits: [
-      { name: "invoiceId", sourceField: fieldRef("tmpl-inv-1", "invoiceId") },
-      { name: "amount", sourceField: fieldRef("tmpl-inv-1", "amount") },
-      { name: "vendor", sourceField: fieldRef("tmpl-inv-1", "vendor") },
-      { name: "dueDate", sourceField: fieldRef("tmpl-inv-1", "dueDate") },
+/**
+ * Template 1 — JSON trigger, multi-field Edit Fields, IF, manual approval pause.
+ * Test payload: { "requestId": "req-42", "amount": "1200", "department": "finance" }
+ */
+const approvalLabNodes = {
+  trigger: templateNode("demo-a1", "trigger.workflow", "Purchase request", {
+    triggerType: "manual",
+    outputFields: ["requestId", "amount", "department"],
+    outputFieldDefs: [
+      { name: "requestId", type: "string" },
+      { name: "amount", type: "string" },
+      { name: "department", type: "string" },
     ],
   }),
-  reviewGate: templateNode("tmpl-inv-3", "condition.if", "Needs approval?", {
-    field: fieldRef("tmpl-inv-1", "amount"),
+  normalize: templateNode("demo-a2", "action.edit-fields", "Normalize payload", {
+    fieldCount: 2,
+    fieldEdits: [
+      {
+        name: "requestId",
+        sourceField: fieldRef("demo-a1", "requestId"),
+      },
+      {
+        name: "amount",
+        sourceField: fieldRef("demo-a1", "amount"),
+      },
+    ],
+  }),
+  reviewGate: templateNode("demo-a3", "condition.if", "Needs approval?", {
+    field: fieldRef("demo-a1", "amount"),
     operator: "greater_than",
-    compareValue: "1000",
+    compareValue: "500",
   }),
-  approval: templateNode("tmpl-inv-4", "approval.base", "Manager approval", {
-    approverEmail: "manager@company.com",
+  approval: templateNode("demo-a4", "approval.base", "Manager sign-off", {
+    approverType: "manual",
   }),
-  approvedStore: templateNode(
-    "tmpl-inv-5",
-    "action.data-table",
-    "Save approved invoice",
-    {
-      operation: "write",
-      tableName: "approved_invoices",
-    }
-  ),
-  autoStore: templateNode(
-    "tmpl-inv-6",
-    "action.data-table",
-    "Auto-save small invoice",
-    {
-      operation: "write",
-      tableName: "auto_approved_invoices",
-    }
-  ),
+  approvedEdit: templateNode("demo-a4b", "action.edit-fields", "Mark approved", {
+    fieldCount: 2,
+    fieldEdits: [
+      {
+        name: "approvedRequestId",
+        sourceField: fieldRef("demo-a1", "requestId"),
+      },
+      {
+        name: "approvedAmount",
+        sourceField: fieldRef("demo-a1", "amount"),
+      },
+    ],
+  }),
+  autoEdit: templateNode("demo-a5", "action.edit-fields", "Auto-approve", {
+    fieldCount: 1,
+    fieldEdits: [
+      {
+        name: "autoApproved",
+        sourceField: fieldRef("demo-a1", "requestId"),
+      },
+    ],
+  }),
 }
 
-const invoiceGraph = buildGraph(
+const approvalLabGraph = buildGraph(
   [
-    invoiceNodes.trigger,
-    invoiceNodes.normalize,
-    invoiceNodes.reviewGate,
-    invoiceNodes.approval,
-    invoiceNodes.approvedStore,
-    invoiceNodes.autoStore,
+    approvalLabNodes.trigger,
+    approvalLabNodes.normalize,
+    approvalLabNodes.reviewGate,
+    approvalLabNodes.approval,
+    approvalLabNodes.approvedEdit,
+    approvalLabNodes.autoEdit,
   ],
   [
-    connect(invoiceNodes.trigger.id, invoiceNodes.normalize.id),
-    connect(invoiceNodes.normalize.id, invoiceNodes.reviewGate.id),
+    connect(approvalLabNodes.trigger.id, approvalLabNodes.normalize.id),
+    connect(approvalLabNodes.normalize.id, approvalLabNodes.reviewGate.id),
     connect(
-      invoiceNodes.reviewGate.id,
-      invoiceNodes.approval.id,
+      approvalLabNodes.reviewGate.id,
+      approvalLabNodes.approval.id,
       "true",
       "main-in"
     ),
-    connect(invoiceNodes.approval.id, invoiceNodes.approvedStore.id),
+    connect(approvalLabNodes.approval.id, approvalLabNodes.approvedEdit.id),
     connect(
-      invoiceNodes.reviewGate.id,
-      invoiceNodes.autoStore.id,
+      approvalLabNodes.reviewGate.id,
+      approvalLabNodes.autoEdit.id,
       "false",
       "main-in"
     ),
   ]
 )
 
-const leadNodes = {
-  trigger: templateNode("tmpl-lead-1", "trigger.workflow", "Lead submitted", {
-    triggerType: "webhook",
-    outputFields: ["email", "company", "score", "source"],
+/**
+ * Template 2 — Array trigger, loop, multi Edit Fields, parallel branches, merge.
+ * Test payload (per-field): batchId = batch-2024-01, orders = ord-1, ord-2, ord-3
+ */
+const batchLabNodes = {
+  trigger: templateNode("demo-b1", "trigger.workflow", "Orders imported", {
+    triggerType: "manual",
+    outputFields: ["batchId", "orders"],
+    outputFieldDefs: [
+      { name: "batchId", type: "string" },
+      { name: "orders", type: "array" },
+    ],
   }),
-  enrich: templateNode("tmpl-lead-2", "action.code", "Enrich lead", {
-    language: "javascript",
-    code: "// Enrich lead data from the incoming JSON payload\nreturn items;",
+  groupItems: templateNode("demo-b2", "action.aggregate", "Group by status", {
+    groupByField: fieldRef("demo-b1", "status"),
+    itemsField: fieldRef("demo-b1", "orders"),
   }),
-  route: templateNode("tmpl-lead-3", "condition.switch", "Route by score", {
+  loop: templateNode("demo-b3", "loop.over-items", "Process each order", {
+    collectionField: fieldRef("demo-b1", "orders"),
+  }),
+  processItem: templateNode("demo-b4", "action.edit-fields", "Normalize order", {
+    fieldCount: 2,
+    fieldEdits: [
+      {
+        name: "batchId",
+        sourceField: fieldRef("demo-b1", "batchId"),
+      },
+      {
+        name: "orderIndex",
+        sourceField: fieldRef("demo-b3", "loopIndex"),
+      },
+    ],
+  }),
+  fanOut: templateNode("demo-b5", "parallel.base", "Finalize branches", {
+    maxConcurrency: 2,
+  }),
+  branchAEdit: templateNode("demo-b6", "action.edit-fields", "Summary branch", {
+    fieldCount: 1,
+    fieldEdits: [
+      {
+        name: "batchId",
+        sourceField: fieldRef("demo-b1", "batchId"),
+      },
+    ],
+  }),
+  branchBEdit: templateNode("demo-b7", "action.edit-fields", "Audit branch", {
+    fieldCount: 1,
+    fieldEdits: [
+      {
+        name: "loopItemCount",
+        sourceField: fieldRef("demo-b3", "loopItemCount"),
+      },
+    ],
+  }),
+  merge: templateNode("demo-b8", "action.merge", "Combine branches"),
+  finalize: templateNode("demo-b9", "action.edit-fields", "Merged output", {
+    fieldCount: 1,
+    fieldEdits: [
+      {
+        name: "batchId",
+        sourceField: fieldRef("demo-b1", "batchId"),
+      },
+    ],
+  }),
+}
+
+const batchLabGraph = buildGraph(
+  [
+    batchLabNodes.trigger,
+    batchLabNodes.groupItems,
+    batchLabNodes.loop,
+    batchLabNodes.processItem,
+    batchLabNodes.fanOut,
+    batchLabNodes.branchAEdit,
+    batchLabNodes.branchBEdit,
+    batchLabNodes.merge,
+    batchLabNodes.finalize,
+  ],
+  [
+    connect(batchLabNodes.trigger.id, batchLabNodes.groupItems.id),
+    connect(batchLabNodes.groupItems.id, batchLabNodes.loop.id),
+    connect(batchLabNodes.loop.id, batchLabNodes.processItem.id, "loop", "main-in"),
+    connect(batchLabNodes.loop.id, batchLabNodes.fanOut.id, "done", "main-in"),
+    connect(batchLabNodes.fanOut.id, batchLabNodes.branchAEdit.id, "branch-a", "main-in"),
+    connect(batchLabNodes.fanOut.id, batchLabNodes.branchBEdit.id, "branch-b", "main-in"),
+    connect(batchLabNodes.branchAEdit.id, batchLabNodes.merge.id, "main-out", "input-a"),
+    connect(batchLabNodes.branchBEdit.id, batchLabNodes.merge.id, "main-out", "input-b"),
+    connect(batchLabNodes.merge.id, batchLabNodes.finalize.id),
+  ]
+)
+
+/**
+ * Template 3 — Switch predefined rules, wait pause, JSON routing.
+ * Test payload: { "leadId": "lead-9", "score": "72", "region": "emea" }
+ */
+const switchLabNodes = {
+  trigger: templateNode("demo-c1", "trigger.workflow", "Lead scored", {
+    triggerType: "manual",
+    outputFields: ["leadId", "score", "region"],
+    outputFieldDefs: [
+      { name: "leadId", type: "string" },
+      { name: "score", type: "string" },
+      { name: "region", type: "string" },
+    ],
+  }),
+  route: templateNode("demo-c2", "condition.switch", "Route by score", {
     caseCount: 2,
     includeDefaultOutput: true,
-    switchCases: buildDefaultSwitchCases(2, true).map((rule, index) => ({
-      ...rule,
-      condition:
-        index === 0
-          ? "score is high priority"
-          : index === 1
-            ? "score is standard"
-            : "all other leads",
-    })),
-  }),
-  sort: templateNode("tmpl-lead-4", "action.sort", "Sort priority leads", {
-    sortField: fieldRef("tmpl-lead-1", "score"),
-    direction: "desc",
-  }),
-  priorityStore: templateNode(
-    "tmpl-lead-5",
-    "action.data-table",
-    "Save priority lead",
-    {
-      operation: "write",
-      tableName: "priority_leads",
-    }
-  ),
-  standardStore: templateNode(
-    "tmpl-lead-6",
-    "action.data-table",
-    "Save standard lead",
-    {
-      operation: "write",
-      tableName: "standard_leads",
-    }
-  ),
-  nurtureStore: templateNode(
-    "tmpl-lead-7",
-    "action.data-table",
-    "Queue nurture lead",
-    {
-      operation: "write",
-      tableName: "nurture_leads",
-    }
-  ),
-}
-
-const leadGraph = buildGraph(
-  [
-    leadNodes.trigger,
-    leadNodes.enrich,
-    leadNodes.route,
-    leadNodes.sort,
-    leadNodes.priorityStore,
-    leadNodes.standardStore,
-    leadNodes.nurtureStore,
-  ],
-  [
-    ...chainMain([leadNodes.trigger, leadNodes.enrich, leadNodes.route]),
-    connect(leadNodes.route.id, leadNodes.sort.id, "case-1", "main-in"),
-    connect(leadNodes.sort.id, leadNodes.priorityStore.id),
-    connect(leadNodes.route.id, leadNodes.standardStore.id, "case-2", "main-in"),
-    connect(leadNodes.route.id, leadNodes.nurtureStore.id, "default", "main-in"),
-  ]
-)
-
-const supportNodes = {
-  trigger: templateNode("tmpl-sup-1", "trigger.workflow", "Ticket opened", {
-    triggerType: "webhook",
-    outputFields: ["ticketId", "subject", "body", "priority"],
-  }),
-  classify: templateNode("tmpl-sup-2", "action.code", "Classify ticket", {
-    language: "javascript",
-    code: "// Classify the ticket from incoming JSON\nreturn items;",
-  }),
-  priorityGate: templateNode("tmpl-sup-3", "condition.if", "Is urgent?", {
-    field: fieldRef("tmpl-sup-1", "priority"),
-    operator: "equals",
-    compareValue: "high",
-  }),
-  urgentFilter: templateNode("tmpl-sup-4", "condition.filter", "Confirm urgent", {
-    field: fieldRef("tmpl-sup-1", "priority"),
-    operator: "equals",
-    compareValue: "high",
-  }),
-  urgentStore: templateNode(
-    "tmpl-sup-5",
-    "action.data-table",
-    "Urgent assignment queue",
-    {
-      operation: "write",
-      tableName: "urgent_tickets",
-    }
-  ),
-  standardStore: templateNode(
-    "tmpl-sup-6",
-    "action.data-table",
-    "Standard assignment queue",
-    {
-      operation: "write",
-      tableName: "standard_tickets",
-    }
-  ),
-}
-
-const supportGraph = buildGraph(
-  [
-    supportNodes.trigger,
-    supportNodes.classify,
-    supportNodes.priorityGate,
-    supportNodes.urgentFilter,
-    supportNodes.urgentStore,
-    supportNodes.standardStore,
-  ],
-  [
-    connect(supportNodes.trigger.id, supportNodes.classify.id),
-    connect(supportNodes.classify.id, supportNodes.priorityGate.id),
-    connect(
-      supportNodes.priorityGate.id,
-      supportNodes.urgentFilter.id,
-      "true",
-      "main-in"
-    ),
-    connect(supportNodes.urgentFilter.id, supportNodes.urgentStore.id),
-    connect(
-      supportNodes.priorityGate.id,
-      supportNodes.standardStore.id,
-      "false",
-      "main-in"
-    ),
-  ]
-)
-
-const batchNodes = {
-  trigger: templateNode("tmpl-batch-1", "trigger.workflow", "Orders imported", {
-    triggerType: "schedule",
-    outputFields: ["batchId", "orders"],
-  }),
-  loop: templateNode("tmpl-batch-2", "loop.over-items", "Process each order", {
-    collectionField: fieldRef("tmpl-batch-1", "orders"),
-  }),
-  processItem: templateNode("tmpl-batch-3", "action.edit-fields", "Normalize order", {
-    fieldEdits: [
-      { name: "batchId", sourceField: fieldRef("tmpl-batch-1", "batchId") },
-    ],
-  }),
-  itemStore: templateNode("tmpl-batch-4", "action.data-table", "Save each order", {
-    operation: "write",
-    tableName: "processed_orders",
-  }),
-  summarize: templateNode("tmpl-batch-5", "action.summarize", "Summarize batch", {
-    valueField: fieldRef("tmpl-batch-1", "orders"),
-    metric: "count",
-  }),
-  summaryStore: templateNode(
-    "tmpl-batch-6",
-    "action.data-table",
-    "Persist batch summary",
-    {
-      operation: "write",
-      tableName: "order_batches",
-    }
-  ),
-}
-
-const batchGraph = buildGraph(
-  [
-    batchNodes.trigger,
-    batchNodes.loop,
-    batchNodes.processItem,
-    batchNodes.itemStore,
-    batchNodes.summarize,
-    batchNodes.summaryStore,
-  ],
-  [
-    connect(batchNodes.trigger.id, batchNodes.loop.id),
-    connect(batchNodes.loop.id, batchNodes.processItem.id, "loop", "main-in"),
-    connect(batchNodes.processItem.id, batchNodes.itemStore.id),
-    connect(batchNodes.loop.id, batchNodes.summarize.id, "done", "main-in"),
-    connect(batchNodes.summarize.id, batchNodes.summaryStore.id),
-  ]
-)
-
-const normalizeNodes = {
-  trigger: templateNode("tmpl-norm-1", "trigger.workflow", "Contact sync", {
-    triggerType: "manual",
-    outputFields: ["firstName", "lastName", "email", "createdAt"],
-  }),
-  rename: templateNode("tmpl-norm-2", "action.rename-keys", "Standardize keys", {
-    renames: [
+    switchCases: [
       {
-        fromField: fieldRef("tmpl-norm-1", "firstName"),
-        toField: "givenName",
+        portId: "case-1",
+        label: "Case 1",
+        field: fieldRef("demo-c1", "score"),
+        operator: "greater_than",
+        compareValue: "80",
       },
       {
-        fromField: fieldRef("tmpl-norm-1", "lastName"),
-        toField: "familyName",
+        portId: "case-2",
+        label: "Case 2",
+        field: fieldRef("demo-c1", "score"),
+        operator: "greater_than",
+        compareValue: "50",
+      },
+      {
+        portId: "default",
+        label: "Default",
+        field: "",
+        operator: "equals",
+        compareValue: "",
       },
     ],
   }),
-  sort: templateNode("tmpl-norm-3", "action.sort", "Sort by created date", {
-    sortField: fieldRef("tmpl-norm-1", "createdAt"),
-    direction: "asc",
-  }),
-  segmentGate: templateNode("tmpl-norm-4", "condition.if", "Work email?", {
-    field: fieldRef("tmpl-norm-1", "email"),
-    operator: "contains",
-    compareValue: "@company.com",
-  }),
-  enterpriseAggregate: templateNode(
-    "tmpl-norm-5",
-    "action.aggregate",
-    "Group work contacts",
-    {
-      groupByField: fieldRef("tmpl-norm-1", "email"),
-    }
-  ),
-  consumerAggregate: templateNode(
-    "tmpl-norm-6",
-    "action.aggregate",
-    "Group personal contacts",
-    {
-      groupByField: fieldRef("tmpl-norm-1", "email"),
-    }
-  ),
-  enterpriseStore: templateNode(
-    "tmpl-norm-7",
-    "action.data-table",
-    "Store work contacts",
-    {
-      operation: "write",
-      tableName: "work_contacts",
-    }
-  ),
-  consumerStore: templateNode(
-    "tmpl-norm-8",
-    "action.data-table",
-    "Store personal contacts",
-    {
-      operation: "write",
-      tableName: "personal_contacts",
-    }
-  ),
-}
-
-const normalizeGraph = buildGraph(
-  [
-    normalizeNodes.trigger,
-    normalizeNodes.rename,
-    normalizeNodes.sort,
-    normalizeNodes.segmentGate,
-    normalizeNodes.enterpriseAggregate,
-    normalizeNodes.consumerAggregate,
-    normalizeNodes.enterpriseStore,
-    normalizeNodes.consumerStore,
-  ],
-  [
-    ...chainMain([
-      normalizeNodes.trigger,
-      normalizeNodes.rename,
-      normalizeNodes.sort,
-      normalizeNodes.segmentGate,
-    ]),
-    connect(
-      normalizeNodes.segmentGate.id,
-      normalizeNodes.enterpriseAggregate.id,
-      "true",
-      "main-in"
-    ),
-    connect(normalizeNodes.enterpriseAggregate.id, normalizeNodes.enterpriseStore.id),
-    connect(
-      normalizeNodes.segmentGate.id,
-      normalizeNodes.consumerAggregate.id,
-      "false",
-      "main-in"
-    ),
-    connect(normalizeNodes.consumerAggregate.id, normalizeNodes.consumerStore.id),
-  ]
-)
-
-const parallelNodes = {
-  trigger: templateNode("tmpl-par-1", "trigger.workflow", "New signup", {
-    triggerType: "webhook",
-    outputFields: ["userId", "email", "plan"],
-  }),
-  fanOut: templateNode("tmpl-par-2", "parallel.base", "Run onboarding tasks", {
-    maxConcurrency: 3,
-  }),
-  welcomeEdit: templateNode("tmpl-par-3", "action.edit-fields", "Prepare welcome", {
-    fieldEdits: [
-      { name: "userId", sourceField: fieldRef("tmpl-par-1", "userId") },
-      { name: "email", sourceField: fieldRef("tmpl-par-1", "email") },
-    ],
-  }),
-  analyticsStore: templateNode(
-    "tmpl-par-4",
-    "action.data-table",
-    "Track signup event",
-    {
-      operation: "write",
-      tableName: "signup_events",
-    }
-  ),
-  provisionStore: templateNode(
-    "tmpl-par-5",
-    "action.data-table",
-    "Provision account",
-    {
-      operation: "write",
-      tableName: "provisioned_accounts",
-    }
-  ),
-  merge: templateNode("tmpl-par-6", "action.merge", "Combine onboarding results"),
-  finalStore: templateNode("tmpl-par-7", "action.data-table", "Complete onboarding", {
-    operation: "write",
-    tableName: "onboarded_users",
-  }),
-}
-
-const parallelGraph = buildGraph(
-  [
-    parallelNodes.trigger,
-    parallelNodes.fanOut,
-    parallelNodes.welcomeEdit,
-    parallelNodes.analyticsStore,
-    parallelNodes.provisionStore,
-    parallelNodes.merge,
-    parallelNodes.finalStore,
-  ],
-  [
-    connect(parallelNodes.trigger.id, parallelNodes.fanOut.id),
-    connect(parallelNodes.fanOut.id, parallelNodes.welcomeEdit.id, "branch-a", "main-in"),
-    connect(parallelNodes.welcomeEdit.id, parallelNodes.analyticsStore.id),
-    connect(
-      parallelNodes.fanOut.id,
-      parallelNodes.provisionStore.id,
-      "branch-b",
-      "main-in"
-    ),
-    connect(parallelNodes.analyticsStore.id, parallelNodes.merge.id, "main-out", "input-a"),
-    connect(parallelNodes.provisionStore.id, parallelNodes.merge.id, "main-out", "input-b"),
-    connect(parallelNodes.merge.id, parallelNodes.finalStore.id),
-  ]
-)
-
-const waitAndStopNodes = {
-  trigger: templateNode("tmpl-wait-1", "trigger.workflow", "Manual review", {
-    triggerType: "manual",
-    outputFields: ["requestId", "status"],
-  }),
-  wait: templateNode("tmpl-wait-2", "loop.wait", "Cool-down period", {
+  priorityWait: templateNode("demo-c3", "loop.wait", "Priority cool-down", {
     durationMs: 3000,
   }),
-  check: templateNode("tmpl-wait-3", "condition.if", "Approved?", {
-    field: fieldRef("tmpl-wait-1", "status"),
-    operator: "equals",
-    compareValue: "approved",
+  priorityEdit: templateNode("demo-c4", "action.edit-fields", "Priority lead", {
+    fieldCount: 2,
+    fieldEdits: [
+      { name: "leadId", sourceField: fieldRef("demo-c1", "leadId") },
+      { name: "tier", sourceField: fieldRef("demo-c1", "score") },
+    ],
   }),
-  approvedStore: templateNode(
-    "tmpl-wait-4",
-    "action.data-table",
-    "Record approval",
-    {
-      operation: "write",
-      tableName: "approved_requests",
-    }
-  ),
-  stop: templateNode("tmpl-wait-5", "exception.stop-and-error", "Reject request", {
-    errorMessage: "Request was not approved",
+  standardEdit: templateNode("demo-c5", "action.edit-fields", "Standard lead", {
+    fieldCount: 1,
+    fieldEdits: [
+      { name: "leadId", sourceField: fieldRef("demo-c1", "leadId") },
+    ],
+  }),
+  nurtureEdit: templateNode("demo-c6", "action.edit-fields", "Nurture lead", {
+    fieldCount: 1,
+    fieldEdits: [
+      { name: "leadId", sourceField: fieldRef("demo-c1", "leadId") },
+    ],
   }),
 }
 
-const waitAndStopGraph = buildGraph(
+const switchLabGraph = buildGraph(
   [
-    waitAndStopNodes.trigger,
-    waitAndStopNodes.wait,
-    waitAndStopNodes.check,
-    waitAndStopNodes.approvedStore,
-    waitAndStopNodes.stop,
+    switchLabNodes.trigger,
+    switchLabNodes.route,
+    switchLabNodes.priorityWait,
+    switchLabNodes.priorityEdit,
+    switchLabNodes.standardEdit,
+    switchLabNodes.nurtureEdit,
   ],
   [
-    ...chainMain([
-      waitAndStopNodes.trigger,
-      waitAndStopNodes.wait,
-      waitAndStopNodes.check,
-    ]),
+    connect(switchLabNodes.trigger.id, switchLabNodes.route.id),
     connect(
-      waitAndStopNodes.check.id,
-      waitAndStopNodes.approvedStore.id,
-      "true",
+      switchLabNodes.route.id,
+      switchLabNodes.priorityWait.id,
+      "case-1",
+      "main-in"
+    ),
+    connect(switchLabNodes.priorityWait.id, switchLabNodes.priorityEdit.id),
+    connect(
+      switchLabNodes.route.id,
+      switchLabNodes.standardEdit.id,
+      "case-2",
       "main-in"
     ),
     connect(
-      waitAndStopNodes.check.id,
-      waitAndStopNodes.stop.id,
-      "false",
+      switchLabNodes.route.id,
+      switchLabNodes.nurtureEdit.id,
+      "default",
       "main-in"
     ),
   ]
-)
-
-const DEMO_CONTACTS_TABLE = "demo_contacts"
-
-const dataTableDemoNodes = {
-  trigger: templateNode("tmpl-dt-1", "trigger.workflow", "New contact", {
-    triggerType: "manual",
-    outputFields: ["name", "email", "status"],
-  }),
-  write: templateNode("tmpl-dt-2", "action.data-table", "Save contact", {
-    operation: "write",
-    tableName: DEMO_CONTACTS_TABLE,
-    columnMappings: tableColumnMappings("tmpl-dt-1", [
-      { columnKey: "name", field: "name" },
-      { columnKey: "email", field: "email" },
-      { columnKey: "status", field: "status" },
-    ]),
-  }),
-  read: templateNode("tmpl-dt-3", "action.data-table", "Load all contacts", {
-    operation: "read",
-    tableName: DEMO_CONTACTS_TABLE,
-  }),
-}
-
-const dataTableDemoGraph = buildGraph(
-  [
-    dataTableDemoNodes.trigger,
-    dataTableDemoNodes.write,
-    dataTableDemoNodes.read,
-  ],
-  chainMain([
-    dataTableDemoNodes.trigger,
-    dataTableDemoNodes.write,
-    dataTableDemoNodes.read,
-  ])
 )
 
 export const templateCatalog: WorkflowTemplate[] = [
   {
-    id: "tmpl-data-table-demo",
-    name: "Data Table Read & Write",
+    id: "demo-approval-lab",
+    name: "Approval Gateway (Testing Lab)",
     description:
-      'Create a table named "demo_contacts" with columns name, email, and status (Design → Tables), then validate. Writes the trigger payload to the table and reads all rows back.',
-    category: "Data",
-    nodeCount: dataTableDemoGraph.nodes.length,
+      "JSON trigger fields, multi-field Edit Fields, IF routing, and a manual approval pause. Try amount 1200 to hit approval, or 200 to auto-approve.",
+    category: "Testing",
+    nodeCount: approvalLabGraph.nodes.length,
     usageCount: 0,
-    tags: ["data-table", "read", "write", "demo"],
+    tags: ["testing", "approval", "if", "edit-fields", "json"],
     source: "provider",
-    nodes: dataTableDemoGraph.nodes,
-    edges: dataTableDemoGraph.edges,
+    nodes: approvalLabGraph.nodes,
+    edges: approvalLabGraph.edges,
   },
   {
-    id: "tmpl-invoice",
-    name: "Invoice Processing",
+    id: "demo-batch-lab",
+    name: "Batch Orders (Testing Lab)",
     description:
-      "Route high amounts through approval, auto-save smaller invoices on the false branch.",
-    category: "Finance",
-    nodeCount: invoiceGraph.nodes.length,
-    usageCount: 1240,
-    tags: ["finance", "if", "approvals"],
+      "Array JSON trigger, Group Items, Loop Over Items, parallel branches, and Combine Branches merge. For orders use comma-separated IDs, e.g. ord-1, ord-2.",
+    category: "Testing",
+    nodeCount: batchLabGraph.nodes.length,
+    usageCount: 0,
+    tags: ["testing", "loop", "aggregate", "parallel", "merge", "array"],
     source: "provider",
-    nodes: invoiceGraph.nodes,
-    edges: invoiceGraph.edges,
+    nodes: batchLabGraph.nodes,
+    edges: batchLabGraph.edges,
   },
   {
-    id: "tmpl-leads",
-    name: "Lead Routing",
+    id: "demo-switch-lab",
+    name: "Switch Router (Testing Lab)",
     description:
-      "Switch across three outputs — priority, standard, and nurture paths.",
-    category: "Sales",
-    nodeCount: leadGraph.nodes.length,
-    usageCount: 890,
-    tags: ["sales", "switch", "routing"],
-    source: "community",
-    nodes: leadGraph.nodes,
-    edges: leadGraph.edges,
-  },
-  {
-    id: "tmpl-support",
-    name: "Support Ticket Triage",
-    description:
-      "Split urgent and standard tickets using IF true/false outputs.",
-    category: "Support",
-    nodeCount: supportGraph.nodes.length,
-    usageCount: 2100,
-    tags: ["support", "if", "filter"],
+      "Predefined Switch case rules (no JavaScript), a Wait pause on the priority path, and typed JSON trigger output. Try score 85, 65, or 30.",
+    category: "Testing",
+    nodeCount: switchLabGraph.nodes.length,
+    usageCount: 0,
+    tags: ["testing", "switch", "wait", "edit-fields", "json"],
     source: "provider",
-    nodes: supportGraph.nodes,
-    edges: supportGraph.edges,
-  },
-  {
-    id: "tmpl-batch-orders",
-    name: "Batch Order Summary",
-    description:
-      "Use Loop and Done outputs — process each item, then summarize the batch.",
-    category: "Operations",
-    nodeCount: batchGraph.nodes.length,
-    usageCount: 420,
-    tags: ["loop", "summarize", "operations"],
-    source: "provider",
-    nodes: batchGraph.nodes,
-    edges: batchGraph.edges,
-  },
-  {
-    id: "tmpl-data-normalization",
-    name: "Data Normalization",
-    description:
-      "Segment contacts on IF true/false, then aggregate and store separately.",
-    category: "Data",
-    nodeCount: normalizeGraph.nodes.length,
-    usageCount: 650,
-    tags: ["if", "aggregate", "rename"],
-    source: "community",
-    nodes: normalizeGraph.nodes,
-    edges: normalizeGraph.edges,
-  },
-  {
-    id: "tmpl-parallel-onboarding",
-    name: "Parallel Onboarding",
-    description:
-      "Fan out across parallel branches, then merge results before completing.",
-    category: "Operations",
-    nodeCount: parallelGraph.nodes.length,
-    usageCount: 280,
-    tags: ["parallel", "merge", "onboarding"],
-    source: "provider",
-    nodes: parallelGraph.nodes,
-    edges: parallelGraph.edges,
-  },
-  {
-    id: "tmpl-wait-gate",
-    name: "Wait and Gate",
-    description:
-      "Pause, then route approved requests to storage or rejection on IF outputs.",
-    category: "Operations",
-    nodeCount: waitAndStopGraph.nodes.length,
-    usageCount: 310,
-    tags: ["wait", "if", "exception"],
-    source: "provider",
-    nodes: waitAndStopGraph.nodes,
-    edges: waitAndStopGraph.edges,
+    nodes: switchLabGraph.nodes,
+    edges: switchLabGraph.edges,
   },
 ]
 
