@@ -39,6 +39,8 @@ export type PlaygroundQueueItem = {
   nodeId: string
   payload: unknown
   viaEdgeId?: string
+  /** Present when this work unit is part of a Loop Over Items body. */
+  loopContext?: { loopNodeId: string }
 }
 
 export type PlaygroundPendingApproval = {
@@ -62,6 +64,7 @@ export type PlaygroundPendingState =
       kind: "approval"
       nodeId: string
       payload: unknown
+      loopContext?: { loopNodeId: string }
     }
   | {
       kind: "wait"
@@ -69,12 +72,18 @@ export type PlaygroundPendingState =
       payload: unknown
       durationMs: number
       startedAt: number
+      loopContext?: { loopNodeId: string }
     }
 
 export type PlaygroundContinuationState = {
   steps: PlaygroundStep[]
   queue: PlaygroundQueueItem[]
   pending: PlaygroundPendingState
+  /** Serialized loop-completion trackers so Done still fires after resume. */
+  loopCompletions?: Record<
+    string,
+    { remaining: number; totalItems: number; donePayload: unknown }
+  >
 }
 
 export type PlaygroundResumeAction =

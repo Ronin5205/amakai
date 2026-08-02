@@ -5,7 +5,10 @@ import {
   buildDataTableRowFromPayload,
   buildTriggerPlaygroundPayload,
   countPopulatedRowFields,
+  filterDataTableRowsByColumn,
+  findDataTableRowByColumnValue,
   mergePayload,
+  resolveFindCompareValue,
   resolvePayloadField,
 } from "@/lib/engine/playground-data-table"
 import { workflowNode } from "@/tests/fixtures/workflow-fixtures"
@@ -143,6 +146,70 @@ describe("playground-data-table", () => {
     it("merges patches onto object payloads", () => {
       expect(mergePayload({ a: 1 }, { b: 2 })).toEqual({ a: 1, b: 2 })
       expect(mergePayload(null, { b: 2 })).toEqual({ b: 2 })
+    })
+  })
+
+  describe("filterDataTableRowsByColumn", () => {
+    const rows = [
+      { data: { email: "ada@example.com", status: "active" } },
+      { data: { email: "bob@example.com", status: "inactive" } },
+      { data: { email: "carol@example.com", status: "active" } },
+    ]
+
+    it("filters rows by equals operator", () => {
+      const filtered = filterDataTableRowsByColumn(
+        rows,
+        "status",
+        "equals",
+        "active"
+      )
+
+      expect(filtered).toHaveLength(2)
+      expect(filtered.map((row) => row.data.email)).toEqual([
+        "ada@example.com",
+        "carol@example.com",
+      ])
+    })
+
+    it("filters rows by contains operator", () => {
+      const filtered = filterDataTableRowsByColumn(
+        rows,
+        "email",
+        "contains",
+        "bob"
+      )
+
+      expect(filtered).toHaveLength(1)
+      expect(filtered[0]?.data.email).toBe("bob@example.com")
+    })
+  })
+
+  describe("findDataTableRowByColumnValue", () => {
+    it("finds the first row with an exact column match", () => {
+      const rows = [
+        { id: "row-1", data: { email: "ada@example.com" } },
+        { id: "row-2", data: { email: "bob@example.com" } },
+      ]
+
+      expect(
+        findDataTableRowByColumnValue(rows, "email", "bob@example.com")
+      ).toEqual(rows[1])
+    })
+  })
+
+  describe("resolveFindCompareValue", () => {
+    it("prefers upstream field values over static find values", () => {
+      expect(
+        resolveFindCompareValue(
+          { lookupId: "user-42" },
+          "static-id",
+          "trigger-1.lookupId"
+        )
+      ).toBe("user-42")
+    })
+
+    it("falls back to static find values", () => {
+      expect(resolveFindCompareValue({}, "active", "")).toBe("active")
     })
   })
 })

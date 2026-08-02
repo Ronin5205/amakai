@@ -1,5 +1,11 @@
 import type { Workflow } from "@/lib/domain/workflow"
 import {
+  assertUniqueWorkflowName,
+  cloneWorkflowGraph,
+  generateUniqueWorkflowName,
+  normalizeWorkflowName,
+} from "@/lib/data/workflow-names"
+import {
   createEmptyDraftWorkflow,
   isPersistedWorkflowId,
   mapWorkflowRow,
@@ -72,13 +78,20 @@ export async function saveWorkflowDraft(workflow: Workflow): Promise<Workflow> {
   }
 
   const payload = {
-    name: workflow.name.trim() || "Untitled workflow",
+    name: normalizeWorkflowName(workflow.name),
     status: workflow.status ?? "draft",
     graph: toWorkflowGraphPayload(workflow),
     updated_at: workflow.updatedAt,
   }
 
   if (isPersistedWorkflowId(workflow.id)) {
+    await assertUniqueWorkflowName(
+      auth.supabase,
+      auth.userId,
+      payload.name,
+      workflow.id
+    )
+
     const { data, error } = await auth.supabase
       .from("workflows")
       .update(payload)
@@ -93,6 +106,8 @@ export async function saveWorkflowDraft(workflow: Workflow): Promise<Workflow> {
 
     return mapWorkflowRow(data as WorkflowRow)
   }
+
+  await assertUniqueWorkflowName(auth.supabase, auth.userId, payload.name)
 
   const { data, error } = await auth.supabase
     .from("workflows")
@@ -116,11 +131,17 @@ export async function createWorkflowDraft(name?: string): Promise<Workflow> {
     throw new Error("Sign in to create workflows.")
   }
 
+  const uniqueName = await generateUniqueWorkflowName(
+    auth.supabase,
+    auth.userId,
+    name ?? "Untitled workflow"
+  )
+
   const { data, error } = await auth.supabase
     .from("workflows")
     .insert({
       user_id: auth.userId,
-      name: name?.trim() || "Untitled workflow",
+      name: uniqueName,
       status: "draft",
       graph: { nodes: [], edges: [] },
     })
@@ -153,4 +174,54 @@ export async function deleteWorkflow(workflowId: string): Promise<void> {
   if (error) {
     throw new Error(error.message ?? "Failed to delete workflow.")
   }
+}
+
+export async function duplicateWorkflow(workflowId: string): Promise<Workflow> {
+  const auth = await getAuthenticatedUserId()
+  if (!auth) {
+    throw new Error("Sign in to duplicate workflows.")
+  }
+
+  if (!isPersistedWorkflowId(workflowId)) {
+    throw new Error("Workflow not found.")
+  }
+
+  const { data: source, error: sourceError } = await auth.supabase
+    .from("workflows")
+    .select("*")
+    .eq("id", workflowId)
+    .eq("user_id", auth.userId)
+    .single()
+
+  if (sourceError || !source) {
+    throw new Error("Workflow not found.")
+  }
+
+  const mapped = mapWorkflowRow(source as WorkflowRow)
+  const uniqueName = await generateUniqueWorkflowName(
+    auth.supabase,
+    auth.userId,
+    `${mapped.name} copy`
+  )
+  const clonedGraph = cloneWorkflowGraph(
+    mapped.nodes,
+    mapped.edges ?? []
+  )
+
+  const { data, error } = await auth.supabase
+    .from("workflows")
+    .insert({
+      user_id: auth.userId,
+      name: uniqueName,
+      status: "draft",
+      graph: clonedGraph,
+    })
+    .select("*")
+    .single()
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Failed to duplicate workflow.")
+  }
+
+  return mapWorkflowRow(data as WorkflowRow)
 }

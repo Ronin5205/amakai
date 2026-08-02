@@ -22,6 +22,8 @@ import {
   getCanvasWorldBounds,
   nodeIntersectsRect,
 } from "@/lib/design/canvas-viewport"
+import { getInspectorAnchorScreen } from "@/lib/design/inspector-placement"
+import type { InspectorAnchorScreen } from "@/lib/design/inspector-placement"
 import { CANVAS_DROP_ID } from "@/lib/design/design-hub-types"
 import type { ConnectionDraft } from "@/lib/design/connection-draft"
 import type { WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
@@ -44,6 +46,8 @@ export type CanvasViewportApi = {
   getWorldPoint: (clientX: number, clientY: number) => { x: number; y: number }
   getViewportCenter: () => { x: number; y: number }
 }
+
+export type { InspectorAnchorScreen } from "@/lib/design/inspector-placement"
 
 export type WorkflowGraphControls = {
   cancelConnectionDraft: () => void
@@ -75,6 +79,7 @@ export interface WorkflowNodeGraphProps {
   onRedo: () => void
   onRegisterViewport?: (api: CanvasViewportApi) => void
   onRegisterGraphControls?: (controls: WorkflowGraphControls) => void
+  onInspectorAnchorChange?: (anchor: InspectorAnchorScreen | null) => void
   onConnectionDraftCanvasClick?: (
     world: { x: number; y: number },
     draft: ConnectionDraft,
@@ -158,6 +163,7 @@ export function WorkflowNodeGraph({
   onRedo,
   onRegisterViewport,
   onRegisterGraphControls,
+  onInspectorAnchorChange,
   onConnectionDraftCanvasClick,
   onConnectionDraftCancel,
   fullBleed = false,
@@ -248,6 +254,44 @@ export function WorkflowNodeGraph({
       getViewportCenter: getViewportCenterWorldPoint,
     })
   }, [getViewportCenterWorldPoint, getWorldPoint, onRegisterViewport])
+
+  React.useLayoutEffect(() => {
+    if (!onInspectorAnchorChange) {
+      return
+    }
+
+    const container = containerRef.current
+    if (!container || selectedNodeIds.length === 0) {
+      onInspectorAnchorChange(null)
+      return
+    }
+
+    const anchorNode = displayNodes.find((node) => node.id === selectedNodeIds[0])
+    if (!anchorNode) {
+      onInspectorAnchorChange(null)
+      return
+    }
+
+    const { centerX, topY } = getInspectorAnchorScreen(
+      anchorNode,
+      viewport,
+      container.clientWidth,
+      container.clientHeight
+    )
+
+    onInspectorAnchorChange({
+      centerX,
+      topY,
+      containerWidth: container.clientWidth,
+      containerHeight: container.clientHeight,
+    })
+  }, [
+    containerRef,
+    displayNodes,
+    onInspectorAnchorChange,
+    selectedNodeIds,
+    viewport,
+  ])
 
   React.useEffect(() => {
     if (!connectionSource || connectionPreviewLocked) {

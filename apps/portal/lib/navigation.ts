@@ -1,33 +1,22 @@
 import type { Icon } from "@phosphor-icons/react"
 import {
-  BellIcon,
   BookOpenIcon,
   BrainIcon,
-  ChartLineUpIcon,
   ClockCounterClockwiseIcon,
-  CodeIcon,
   CreditCardIcon,
-  CubeIcon,
-  CurrencyCircleDollarIcon,
   DotsThreeIcon,
   FlaskIcon,
-  FlowArrowIcon,
-  GaugeIcon,
   GearIcon,
   HouseIcon,
   KeyIcon,
-  LightningIcon,
-  ListChecksIcon,
-  PackageIcon,
   PlugsConnectedIcon,
   PlayIcon,
+  PulseIcon,
   PuzzlePieceIcon,
   RocketLaunchIcon,
   ScrollIcon,
   TableIcon,
-  TagIcon,
   TreeStructureIcon,
-  UsersIcon,
   UsersThreeIcon,
 } from "@phosphor-icons/react"
 
@@ -52,6 +41,22 @@ export const portalNavigation: PortalNavItem[] = [
     icon: HouseIcon,
   },
   {
+    title: "Production",
+    icon: RocketLaunchIcon,
+    items: [
+      {
+        title: "Runs",
+        href: "/production/runs",
+        icon: RocketLaunchIcon,
+      },
+      {
+        title: "History",
+        href: "/production/history",
+        icon: ClockCounterClockwiseIcon,
+      },
+    ],
+  },
+  {
     title: "Design",
     icon: TreeStructureIcon,
     items: [
@@ -73,60 +78,15 @@ export const portalNavigation: PortalNavItem[] = [
     ],
   },
   {
-    title: "Deploy",
-    icon: RocketLaunchIcon,
-    items: [
-      {
-        title: "Environments",
-        href: "/deploy/environments",
-        icon: CubeIcon,
-      },
-      { title: "Versions", href: "/deploy/versions", icon: TagIcon },
-      { title: "Releases", href: "/deploy/releases", icon: PackageIcon },
-    ],
-  },
-  {
     title: "Operate",
     icon: PlayIcon,
     items: [
       {
-        title: "Executions",
-        href: "/operate/executions",
-        icon: FlowArrowIcon,
-      },
-      {
-        title: "Monitoring",
-        href: "/operate/monitoring",
-        icon: GaugeIcon,
+        title: "Live Workflows",
+        href: "/operate/live-workflows",
+        icon: PulseIcon,
       },
       { title: "Logs", href: "/operate/logs", icon: ScrollIcon },
-      { title: "Alerts", href: "/operate/alerts", icon: BellIcon },
-    ],
-  },
-  {
-    title: "Optimize",
-    icon: ChartLineUpIcon,
-    items: [
-      {
-        title: "Analytics",
-        href: "/optimize/analytics",
-        icon: ChartLineUpIcon,
-      },
-      {
-        title: "AI Recommendations",
-        href: "/optimize/ai-recommendations",
-        icon: LightningIcon,
-      },
-      {
-        title: "Cost Optimization",
-        href: "/optimize/cost-optimization",
-        icon: CurrencyCircleDollarIcon,
-      },
-      {
-        title: "Performance",
-        href: "/optimize/performance",
-        icon: GaugeIcon,
-      },
     ],
   },
   {
@@ -165,23 +125,8 @@ export const portalNavigation: PortalNavItem[] = [
     title: "Administration",
     icon: GearIcon,
     items: [
-      {
-        title: "Organization",
-        href: "/admin/organization",
-        icon: UsersIcon,
-      },
-      {
-        title: "Users & Roles",
-        href: "/admin/users-roles",
-        icon: ListChecksIcon,
-      },
       { title: "Billing", href: "/admin/billing", icon: CreditCardIcon },
-      { title: "API & SDK", href: "/admin/api-sdk", icon: CodeIcon },
-      {
-        title: "Audit Logs",
-        href: "/admin/audit-logs",
-        icon: ClockCounterClockwiseIcon,
-      },
+      { title: "Settings", href: "/settings", icon: GearIcon },
     ],
   },
 ]
@@ -233,8 +178,44 @@ export function getBreadcrumbs(pathname: string): BreadcrumbCrumb[] {
     return [{ label: "Dashboard", href: "/" }]
   }
 
-  if (pathname === "/settings") {
-    return [{ label: "Settings", href: "/settings" }]
+  const productionMatch = pathname.match(/^\/production\/([^/]+)/)
+  if (productionMatch) {
+    const subPage = productionMatch[1]
+    const crumbs: BreadcrumbCrumb[] = [{ label: "Production" }]
+
+    if (subPage === "runs") {
+      crumbs.push({ label: "Runs", href: "/production/runs" })
+    } else if (subPage === "history") {
+      crumbs.push({ label: "History", href: "/production/history" })
+    } else {
+      crumbs.push({
+        label: subPage.replace(/-/g, " "),
+        href: pathname,
+      })
+    }
+
+    return crumbs
+  }
+
+  const liveWorkflowMatch = pathname.match(
+    /^\/operate\/live-workflows\/([^/]+)(?:\/([^/]+))?/
+  )
+  if (liveWorkflowMatch) {
+    const subPage = liveWorkflowMatch[2]
+    const crumbs: BreadcrumbCrumb[] = [
+      { label: "Operate" },
+      { label: "Live Workflows", href: "/operate/live-workflows" },
+    ]
+
+    if (subPage === "monitoring") {
+      crumbs.push({ label: "Monitoring", href: pathname })
+    } else if (subPage === "executions") {
+      crumbs.push({ label: "Executions", href: pathname })
+    } else {
+      crumbs.push({ label: "Workflow", href: pathname })
+    }
+
+    return crumbs
   }
 
   const item = getNavItemByHref(pathname)
@@ -290,6 +271,21 @@ export function isNavItemActive(
 
     if (hrefPath === "/design/testing") {
       return pathname === "/design/testing"
+    }
+
+    if (hrefPath === "/operate/live-workflows") {
+      return (
+        pathname === "/operate/live-workflows" ||
+        pathname.startsWith("/operate/live-workflows/")
+      )
+    }
+
+    if (hrefPath === "/production/runs") {
+      return pathname === "/production/runs"
+    }
+
+    if (hrefPath === "/production/history") {
+      return pathname === "/production/history"
     }
 
     return true

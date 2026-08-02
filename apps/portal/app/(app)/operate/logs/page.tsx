@@ -1,23 +1,72 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 
+import { getExecutionDetailAction } from "@/lib/actions/operate-actions"
 import { SectionPage } from "@/components/section-page"
 import { LogsView } from "@/components/views/logs-view"
-import { listLogs } from "@/lib/data/logs"
+import { listExecutionLogGroups } from "@/lib/data/logs"
+import type { LogFilter } from "@/lib/domain/monitoring"
 
 export const metadata: Metadata = {
   title: "Logs",
 }
 
-export default async function Page() {
-  const logs = await listLogs()
+function parseLogFilter(value?: string): LogFilter {
+  if (
+    value === "alerts" ||
+    value === "info" ||
+    value === "warn" ||
+    value === "error" ||
+    value === "debug"
+  ) {
+    return value
+  }
+
+  return "all"
+}
+
+function LogsContent({
+  logGroups,
+  initialFilter,
+  initialExecutionId,
+}: {
+  logGroups: Awaited<ReturnType<typeof listExecutionLogGroups>>
+  initialFilter: LogFilter
+  initialExecutionId: string | null
+}) {
+  return (
+    <LogsView
+      logGroups={logGroups}
+      initialFilter={initialFilter}
+      initialExecutionId={initialExecutionId}
+      getExecutionDetail={getExecutionDetailAction}
+    />
+  )
+}
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string; execution?: string }>
+}) {
+  const params = await searchParams
+  const initialFilter = parseLogFilter(params.filter)
+  const initialExecutionId = params.execution ?? null
+  const logGroups = await listExecutionLogGroups()
 
   return (
     <SectionPage
       eyebrow="Operate"
       title="Logs"
-      description="Search and filter workflow log entries by severity, component, and timestamp."
+      description="Production runs grouped by execution. Warnings and errors also surface in your notification bell."
     >
-      <LogsView logs={logs} />
+      <Suspense fallback={null}>
+        <LogsContent
+          logGroups={logGroups}
+          initialFilter={initialFilter}
+          initialExecutionId={initialExecutionId}
+        />
+      </Suspense>
     </SectionPage>
   )
 }

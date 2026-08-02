@@ -1,74 +1,88 @@
 # Portal data layer
 
-Async accessors in this folder are the **only** place that should know whether data comes from fixtures or Supabase. Pages and view components must not import from `fixtures/` directly.
+Async accessors in this folder are the **only** place that should know whether data comes from stubs, in-memory catalog data, or Supabase. Pages and view components must not query the database directly.
 
 ## Pattern
 
 ```ts
 // lib/data/executions.ts
-import type { Execution } from "@/lib/domain/execution"
-import { executionFixtures } from "./fixtures/executions"
+import { listProductionRunsForWorkflow } from "@/lib/data/production-runs"
 
-export async function listExecutions(): Promise<Execution[]> {
-  return executionFixtures // ← replace this body with a Supabase query
+export async function listWorkflowExecutions(workflowId: string) {
+  const runs = await listProductionRunsForWorkflow(workflowId)
+  return runs.map(mapToWorkflowExecution)
 }
 ```
 
 ```tsx
-// app/(app)/operate/executions/page.tsx
-import { listExecutions } from "@/lib/data/executions"
+// app/(app)/operate/live-workflows/[workflowId]/executions/page.tsx
+import { listWorkflowExecutions } from "@/lib/data/executions"
 
-export default async function Page() {
-  const executions = await listExecutions()
-  return <ExecutionsView executions={executions} />
+export default async function Page({ params }) {
+  const { workflowId } = await params
+  const executions = await listWorkflowExecutions(workflowId)
+  return <WorkflowExecutionsView executions={executions} />
 }
 ```
 
 ## Modules
 
-| Accessor | Functions | Domain types |
-|----------|-----------|--------------|
-| `dashboard.ts` | `getLiveWorkflowCounts`, `getPerformanceMetrics`, `getAiUsage` | `execution`, `monitoring` |
-| `executions.ts` | `listExecutions`, `getExecutionSummary` | `execution` |
-| `monitoring.ts` | `getResourceMetrics`, `getComponentHealth`, `getQueueStats`, `getLatencyMetrics` | `monitoring` |
-| `logs.ts` | `listLogs` | `monitoring` |
-| `alerts.ts` | `listAlerts` | `monitoring` |
-| `deployments.ts` | `listEnvironments`, `listVersions`, `listReleases` | `deployment` |
-| `templates.ts` | `listTemplates` | `template` |
-| `workflows.ts` | `listWorkflows`, `getWorkflowDraft`, `createWorkflowDraft`, `saveWorkflowDraft`, `deleteWorkflow` | `workflow` |
-| `planning.ts` | `getPlanningStages`, `getSampleAnalysis`, `getClarificationQuestions` | `planning` |
+| Accessor | Functions | Backend | Domain types |
+|----------|-----------|---------|--------------|
+| `workflows.ts` | `listWorkflows`, `getWorkflowDraft`, `createWorkflowDraft`, `saveWorkflowDraft`, `deleteWorkflow`, `duplicateWorkflow` | Supabase | `workflow` |
+| `workflow-names.ts` | Unique name helpers | — | — |
+| `workflow-mappers.ts` | Row ↔ domain mappers | — | `workflow` |
+| `data-tables.ts` | CRUD + row listing for design tables | Supabase | `data-table` |
+| `data-table-mappers.ts` | Row ↔ domain mappers | — | `data-table` |
+| `deployments.ts` | `deployWorkflowDraft`, `listLiveWorkflows`, `getLiveWorkflow` | Supabase | `deployment` |
+| `production-runs.ts` | `startProductionRun`, `listProductionRuns`, `listProductionExecutionRecords`, retention prune | Supabase (`workflow_executions`) | `production`, `execution` |
+| `executions.ts` | `listExecutions`, `listWorkflowExecutions`, summaries | Via `production-runs` | `execution`, `operate` |
+| `logs.ts` | `listExecutionLogGroups`, `listLogs`, `getExecutionLogDetail` | Via `production-runs` | `monitoring`, `operate` |
+| `monitoring.ts` | `getWorkflowMonitoring` | Supabase + execution aggregation | `operate`, `monitoring` |
+| `templates.ts` | `listTemplates` | In-memory catalog templates | `template` |
+| `planning.ts` | `getPlanningStages`, `getSampleAnalysis`, `getClarificationQuestions` | Stubs (empty) | `planning` |
 
-Fixtures mirror the shape of `lib/domain/*`. When wiring Supabase, keep domain types as the contract and map DB rows to them inside the accessor.
+Supporting logic (not accessors):
 
-**Workflows** (`workflows.ts`) are partially live: list/get/create/save/delete use Supabase when authenticated. Templates, planning, and deploy environments still use fixtures until those tables are wired.
+| Location | Role |
+|----------|------|
+| `lib/operate/production-execution-insights.ts` | Parse run results → logs, monitoring metrics, trigger input |
+| `lib/operate/workflow-monitoring-profile.ts` | Adaptive monitoring sections from workflow graph + runs |
+| `lib/operate/execution-log-retention.ts` | `PRODUCTION_EXECUTION_RETENTION_LIMIT` (20 runs per workflow) |
+| `lib/engine/playground.ts` | In-process validation and production execution engine (scaffold) |
 
-## Swapping to Supabase (example)
+## Supabase tables
 
-```ts
-import { createClient } from "@/utils/supabase/server"
-import type { Execution } from "@/lib/domain/execution"
+Apply migrations in `supabase/migrations/` (oldest first):
 
-export async function listExecutions(): Promise<Execution[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from("executions")
-    .select("*")
-    .order("started_at", { ascending: false })
+| Migration | Tables / changes |
+|-----------|------------------|
+| `20260730183000_workflows_and_deploy.sql` | `workflows`, `workflow_versions`, `environments`, `releases` |
+| `20260731190000_data_tables.sql` | Design-time data tables |
+| `20260731200000_data_tables_unique_name.sql` | Unique table names per user |
+| `20260802150000_workflow_executions.sql` | Production run history |
+| `20260802153000_workflow_executions_delete_policy.sql` | Delete policy for retention pruning |
 
-  if (error) throw error
-  return data.map(mapExecutionRow) // map snake_case rows → domain type
-}
-```
+## Production execution flow
 
-Use the server client (`@/utils/supabase/server`) in Server Components and Route Handlers. Use `@/utils/supabase/client` only in Client Components.
+1. User deploys from the workflow editor (`deployWorkflowDraft`) → workflow status `published`, version `live`.
+2. User runs from **Production → Runs** (`startProductionRun`) with optional trigger payload.
+3. Run is stored in `workflow_executions` with `result` JSON (steps, trigger input).
+4. **Operate → Logs**, **Live Workflows → Executions/Monitoring**, and **Production → History** read from the same table.
+5. After each run, executions older than the last **20 per workflow** are deleted.
+
+## Swapping or extending backends
+
+Keep exported function signatures and domain types stable. Map snake_case DB rows to camelCase domain objects inside accessors.
+
+Use `@/utils/supabase/server` in Server Components and Server Actions. Use `@/utils/supabase/client` only in Client Components.
 
 ## Rules for agents
 
-1. **Do not** fetch inside `components/views/*` — keep views presentational; pass props from the page.
-2. **Do not** change view prop types when adding a backend unless the domain model changes.
-3. **Do** add migrations and RLS in Supabase before exposing new tables to the Data API.
-4. **Do** enable RLS on every exposed table; scope rows by `organization_id` (see root `README.md`).
-5. Client-side filters (executions, logs, alerts) can move to SQL `where` clauses later without UI changes.
-6. Action buttons in views are intentionally disabled until mutations exist — wire Server Actions or API routes in the accessor layer, not in views.
+1. **Do not** fetch inside `components/views/*` — pass props from pages.
+2. **Do not** change view prop types unless the domain model changes.
+3. **Do** add migrations and RLS before exposing new tables.
+4. **Do** scope RLS with `auth.uid()` on user-owned rows (current model is single-user; org tenancy is future work).
+5. Wire mutations via Server Actions in `lib/actions/` and revalidate affected routes.
 
-See [SDLC.md](../../../SDLC.md) section 3 (Requirements Engineering) for the domain model this UI implements.
+See [Portal_Guide.md](../../../docs/Portal_Guide.md) for routes and UX, and [SDLC.md](../../../docs/SDLC.md) for product requirements.

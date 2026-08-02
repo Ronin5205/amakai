@@ -25,7 +25,10 @@ import { EditorFloatingChrome } from "@/components/design/editor-floating-chrome
 import { EditorNodeInspectorPanel } from "@/components/design/editor-node-inspector-panel"
 import { ValidationPanel } from "@/components/design/validation-panel"
 import { WorkflowNodeGraph } from "@/components/design/workflow-node-graph"
-import type { WorkflowGraphControls } from "@/components/design/workflow-node-graph"
+import type {
+  InspectorAnchorScreen,
+  WorkflowGraphControls,
+} from "@/components/design/workflow-node-graph"
 import type { ConnectionDraft, PendingConnectionPlacement } from "@/lib/design/connection-draft"
 import { useDesignHubState } from "@/hooks/use-design-hub-state"
 import { useWorkflowValidation } from "@/hooks/use-workflow-validation"
@@ -55,7 +58,6 @@ import type {
   PlanningStage,
   RequirementAnalysis,
 } from "@/lib/domain/planning"
-import type { Environment } from "@/lib/domain/deployment"
 import type { WorkflowTemplate } from "@/lib/domain/template"
 import type { Workflow } from "@/lib/domain/workflow"
 import type { DataTableSummary } from "@/lib/domain/data-table"
@@ -90,7 +92,6 @@ import {
 export interface DesignHubViewProps {
   initialPanel?: DesignPanelParam
   workflow: Workflow
-  environments: Environment[]
   analysis: RequirementAnalysis
   planningStages: PlanningStage[]
   questions: ClarificationQuestion[]
@@ -101,7 +102,6 @@ export interface DesignHubViewProps {
 export function DesignHubView({
   initialPanel = "components",
   workflow: initialWorkflow,
-  environments,
   analysis,
   planningStages,
   questions,
@@ -117,6 +117,8 @@ export function DesignHubView({
     initialPanel === "templates" ? "templates" : "components"
   )
   const [inspectorOpen, setInspectorOpen] = React.useState(false)
+  const [inspectorAnchorScreen, setInspectorAnchorScreen] =
+    React.useState<InspectorAnchorScreen | null>(null)
   const [aiOpen, setAiOpen] = React.useState(
     initialPanel === "ai" || panelParam === "ai"
   )
@@ -160,6 +162,13 @@ export function DesignHubView({
   const handleRegisterGraphControls = React.useCallback(
     (controls: WorkflowGraphControls) => {
       graphControlsRef.current = controls
+    },
+    []
+  )
+
+  const handleInspectorAnchorChange = React.useCallback(
+    (anchor: InspectorAnchorScreen | null) => {
+      setInspectorAnchorScreen(anchor)
     },
     []
   )
@@ -538,6 +547,7 @@ export function DesignHubView({
           onRedo={redo}
           onRegisterViewport={handleRegisterViewport}
           onRegisterGraphControls={handleRegisterGraphControls}
+          onInspectorAnchorChange={handleInspectorAnchorChange}
           onConnectionDraftCanvasClick={handleConnectionDraftCanvasClick}
           onConnectionDraftCancel={handleConnectionDraftCancel}
           nodeExecutionStates={validationNodeStates}
@@ -567,6 +577,7 @@ export function DesignHubView({
           workflow={workflow}
           node={selectedNode}
           selectedCount={selectedNodeIds.length}
+          anchorScreen={inspectorAnchorScreen}
           dataTables={dataTables}
           validationSteps={validationSteps}
           onLabelChange={(label) => {
@@ -613,11 +624,8 @@ export function DesignHubView({
         open={deployOpen}
         onOpenChange={setDeployOpen}
         workflowId={deployWorkflowId}
-        environments={environments}
-        onDeployed={(result) => {
-          setDeployMessage(
-            `Deployed ${result.version} to ${result.environment}.`
-          )
+        onDeployed={() => {
+          setDeployMessage("Workflow is live in production.")
         }}
       />
 

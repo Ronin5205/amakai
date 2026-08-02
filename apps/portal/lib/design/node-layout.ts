@@ -1,4 +1,8 @@
 import type { WorkflowNode } from "@/lib/domain/workflow"
+import {
+  getCatalogItemId,
+  normalizeMergePortId,
+} from "@/lib/design/component-variant-definitions"
 import { resolveNodeDefinition } from "@/lib/design/resolve-node-definition"
 
 export const CANVAS_NODE_MIN_WIDTH = 220
@@ -138,6 +142,10 @@ export function resolveInputPortId(node: WorkflowNode, portId?: string) {
 
   if (!portId || portId === "main-in") {
     return firstInput ?? "main-in"
+  }
+
+  if (getCatalogItemId(node) === "action.merge") {
+    return normalizeMergePortId(portId)
   }
 
   return portId

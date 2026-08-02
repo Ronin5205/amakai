@@ -6,13 +6,16 @@ import { useRouter } from "next/navigation"
 import {
   MagicWandIcon,
   PlusIcon,
-  TrashIcon,
   TreeStructureIcon,
 } from "@phosphor-icons/react"
 
+import { DeleteWorkflowDialog } from "@/components/design/delete-workflow-dialog"
+import { ResourceRowActionsMenu } from "@/components/design/resource-row-actions-menu"
+import { StatusBadge } from "@/components/portal/status-badge"
 import {
   createWorkflowAction,
   deleteWorkflowAction,
+  duplicateWorkflowAction,
 } from "@/lib/actions/workflow-actions"
 import type { Workflow } from "@/lib/domain/workflow"
 import { Button } from "@amakai/shared/components/ui/button"
@@ -32,8 +35,6 @@ import {
   TableHeader,
   TableRow,
 } from "@amakai/shared/components/ui/table"
-import { DeleteWorkflowDialog } from "@/components/design/delete-workflow-dialog"
-import { StatusBadge } from "@/components/portal/status-badge"
 
 export interface WorkflowsViewProps {
   workflows: Workflow[]
@@ -54,6 +55,7 @@ export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProp
   const [workflows, setWorkflows] = React.useState(initialWorkflows)
   const [isCreating, setIsCreating] = React.useState(false)
   const [deletingId, setDeletingId] = React.useState<string | null>(null)
+  const [duplicatingId, setDuplicatingId] = React.useState<string | null>(null)
   const [workflowToDelete, setWorkflowToDelete] = React.useState<Workflow | null>(
     null
   )
@@ -77,6 +79,22 @@ export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProp
     }
 
     router.push(`/design/workflow-editor?id=${result.workflow.id}`)
+  }
+
+  const handleDuplicate = async (workflow: Workflow) => {
+    setError(null)
+    setDuplicatingId(workflow.id)
+
+    const result = await duplicateWorkflowAction(workflow.id)
+
+    setDuplicatingId(null)
+
+    if ("error" in result) {
+      setError(result.error)
+      return
+    }
+
+    setWorkflows((current) => [result.workflow, ...current])
   }
 
   const handleDeleteConfirm = async () => {
@@ -156,7 +174,7 @@ export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProp
                 <TableHead>Status</TableHead>
                 <TableHead>Nodes</TableHead>
                 <TableHead>Last updated</TableHead>
-                <TableHead className="w-[180px] text-right">Actions</TableHead>
+                <TableHead className="w-[140px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -187,15 +205,12 @@ export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProp
                         <TreeStructureIcon data-icon="inline-start" />
                         Open
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={deletingId === workflow.id}
-                        onClick={() => setWorkflowToDelete(workflow)}
-                      >
-                        <TrashIcon data-icon="inline-start" />
-                        {deletingId === workflow.id ? "Deleting…" : "Delete"}
-                      </Button>
+                      <ResourceRowActionsMenu
+                        isDuplicating={duplicatingId === workflow.id}
+                        isDeleting={deletingId === workflow.id}
+                        onDuplicate={() => handleDuplicate(workflow)}
+                        onDelete={() => setWorkflowToDelete(workflow)}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -208,7 +223,7 @@ export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProp
       {workflows.length > 0 ? (
         <p className="text-xs text-muted-foreground">
           Tip: open a workflow to rename it, edit the canvas, and deploy when
-          ready.
+          ready. Workflow names must be unique.
         </p>
       ) : null}
 

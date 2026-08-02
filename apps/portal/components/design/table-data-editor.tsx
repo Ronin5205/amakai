@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowLeftIcon, GearIcon, TrashIcon } from "@phosphor-icons/react"
+import { ArrowLeftIcon, GearIcon, MagnifyingGlassIcon, TrashIcon } from "@phosphor-icons/react"
 
 import {
   deleteDataTableRowAction,
@@ -16,6 +16,15 @@ import type {
   DataTableRow,
 } from "@/lib/domain/data-table"
 import { Button } from "@amakai/shared/components/ui/button"
+import { Input } from "@amakai/shared/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@amakai/shared/components/ui/select"
 import { cn } from "@amakai/shared/lib/utils"
 
 const ROW_SAVE_DEBOUNCE_MS = 600
@@ -129,6 +138,28 @@ function buildRowData(row: EditorRow, columns: DataTableColumn[]) {
       ),
     ])
   )
+}
+
+function rowMatchesSearch(
+  row: EditorRow,
+  columns: DataTableColumn[],
+  query: string,
+  columnKey: string
+) {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) {
+    return true
+  }
+
+  const searchableColumns =
+    columnKey === "__all__"
+      ? columns
+      : columns.filter((column) => column.key === columnKey)
+
+  return searchableColumns.some((column) => {
+    const formatted = formatCellValue(row.data[column.key], column.type)
+    return formatted.toLowerCase().includes(normalizedQuery)
+  })
 }
 
 type GridCellProps = {
@@ -258,6 +289,8 @@ export function TableDataEditor({ table, initialRows }: TableDataEditorProps) {
     toInitialEditorRows(initialRows, table.columns, table.id)
   )
   const [error, setError] = React.useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const [searchColumnKey, setSearchColumnKey] = React.useState("__all__")
 
   const rowsRef = React.useRef(rows)
   const pendingRowSavesRef = React.useRef(
@@ -499,6 +532,27 @@ export function TableDataEditor({ table, initialRows }: TableDataEditorProps) {
     cellRefs.current.get(`${rowIndex}-${columnIndex}`)?.focus()
   }
 
+  const visibleRows = React.useMemo(() => {
+    if (!searchQuery.trim()) {
+      return rows
+    }
+
+    return rows.filter((row) =>
+      rowMatchesSearch(row, columns, searchQuery, searchColumnKey)
+    )
+  }, [columns, rows, searchColumnKey, searchQuery])
+
+  const searchColumnItems = React.useMemo(
+    () => [
+      { label: "All columns", value: "__all__" },
+      ...columns.map((column) => ({
+        label: column.label,
+        value: column.key,
+      })),
+    ],
+    [columns]
+  )
+
   if (columns.length === 0) {
     return (
       <div className="flex flex-col gap-4">
@@ -519,6 +573,44 @@ export function TableDataEditor({ table, initialRows }: TableDataEditorProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <Header table={table} />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
+          <MagnifyingGlassIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Find rows by value…"
+            className="pl-8"
+            aria-label="Find rows"
+          />
+        </div>
+        <Select
+          items={searchColumnItems}
+          value={searchColumnKey}
+          onValueChange={(next) =>
+            setSearchColumnKey(typeof next === "string" ? next : "__all__")
+          }
+        >
+          <SelectTrigger className="w-[10rem]" aria-label="Search column">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false} side="bottom">
+            <SelectGroup>
+              {searchColumnItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        {searchQuery.trim() ? (
+          <p className="text-xs text-muted-foreground">
+            {visibleRows.filter((row) => !row.id.startsWith("draft-")).length} of{" "}
+            {rows.filter((row) => !row.id.startsWith("draft-")).length} rows
+          </p>
+        ) : null}
+      </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <div className="min-h-0 flex-1 overflow-auto border bg-background">
@@ -544,9 +636,9 @@ export function TableDataEditor({ table, initialRows }: TableDataEditorProps) {
             aria-hidden
           />
 
-          {rows.map((row, rowIndex) => {
+          {visibleRows.map((row, rowIndex) => {
             const isDraft = row.id.startsWith("draft-")
-            const rowNumber = rows
+            const rowNumber = visibleRows
               .slice(0, rowIndex)
               .filter((entry) => !entry.id.startsWith("draft-")).length
 
@@ -582,7 +674,7 @@ export function TableDataEditor({ table, initialRows }: TableDataEditorProps) {
                         }
                         const nextRow =
                           direction === "next" ? rowIndex + 1 : rowIndex - 1
-                        if (nextRow >= 0 && nextRow < rows.length) {
+                        if (nextRow >= 0 && nextRow < visibleRows.length) {
                           focusCell(
                             nextRow,
                             direction === "next" ? 0 : colCount - 1

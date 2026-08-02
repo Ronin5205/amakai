@@ -8,6 +8,7 @@ import {
   OutputFieldsEditor,
   SwitchRulesEditor,
   TableColumnMapEditor,
+  TableColumnSelectEditor,
   TableSelectEditor,
   UpstreamFieldSelect,
 } from "@/components/design/node-config-custom-fields"
@@ -185,7 +186,7 @@ function ConfigField({
 
     case "switch-rules": {
       const caseCount = Math.max(2, Number(values.caseCount ?? 2))
-      const includeDefault = values.includeDefaultOutput !== false
+      const includeDefault = values.includeDefaultOutput === true
       const rules = normalizeSwitchCases(value, caseCount, includeDefault)
       return (
         <SwitchRulesEditor
@@ -216,6 +217,19 @@ function ConfigField({
           columns={selectedTable?.columns ?? []}
           value={asTableColumnMapRows(value)}
           upstreamOptions={upstreamOptions}
+          onChange={onChange}
+        />
+      )
+    }
+
+    case "table-column-select": {
+      const tableName = typeof values.tableName === "string" ? values.tableName : ""
+      const selectedTable = findDataTableSummary(dataTables ?? [], tableName)
+      return (
+        <TableColumnSelectEditor
+          id={id}
+          columns={selectedTable?.columns ?? []}
+          value={typeof value === "string" ? value : ""}
           onChange={onChange}
         />
       )
@@ -325,6 +339,39 @@ export function NodeConfigFields({
     if (field.type === "table-column-map" && values.operation !== "write") {
       return false
     }
+    if (
+      (field.key === "writeMode" ||
+        field.key === "matchColumn" ||
+        field.key === "matchValueField") &&
+      values.operation !== "write"
+    ) {
+      return false
+    }
+    if (
+      (field.key === "matchColumn" || field.key === "matchValueField") &&
+      values.writeMode !== "upsert"
+    ) {
+      return false
+    }
+    if (
+      (field.key === "enableFind" ||
+        field.key === "findColumn" ||
+        field.key === "findOperator" ||
+        field.key === "findValue" ||
+        field.key === "findValueField") &&
+      values.operation !== "read"
+    ) {
+      return false
+    }
+    if (
+      (field.key === "findColumn" ||
+        field.key === "findOperator" ||
+        field.key === "findValue" ||
+        field.key === "findValueField") &&
+      values.enableFind !== true
+    ) {
+      return false
+    }
     if (field.key === "approverEmail" && values.approverType !== "email") {
       return false
     }
@@ -379,8 +426,8 @@ export function NodeConfigFields({
       )
       const includeDefault =
         field.key === "includeDefaultOutput"
-          ? next !== false
-          : values.includeDefaultOutput !== false
+          ? next === true
+          : values.includeDefaultOutput === true
 
       onChange(
         "switchCases",

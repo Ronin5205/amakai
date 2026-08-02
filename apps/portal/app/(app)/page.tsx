@@ -1,33 +1,29 @@
 import type { Metadata } from "next"
 
 import { DashboardView } from "@/components/views/dashboard-view"
-import { getAiUsage, getLiveWorkflowCounts, getPerformanceMetrics } from "@/lib/data/dashboard"
-import { listExecutions } from "@/lib/data/executions"
-import { listWorkflows } from "@/lib/data/workflows"
+import { listLiveWorkflows } from "@/lib/data/deployments"
+import {
+  getProductionRunSummary,
+  listProductionRuns,
+} from "@/lib/data/production-runs"
 
 export const metadata: Metadata = {
   title: "Dashboard",
 }
 
 export default async function DashboardPage() {
-  const [workflows, workflowCounts, performanceMetrics, aiUsage, executions] =
+  const [liveWorkflows, recentProductionRuns, productionRunSummary] =
     await Promise.all([
-      listWorkflows(),
-      getLiveWorkflowCounts(),
-      getPerformanceMetrics(),
-      getAiUsage(),
-      listExecutions(),
+      listLiveWorkflows(),
+      listProductionRuns(5),
+      getProductionRunSummary(),
     ])
-
-  const recentExecutions = executions.slice(0, 5)
 
   return (
     <DashboardView
-      hasWorkflows={workflows.length > 0}
-      workflowCounts={workflowCounts}
-      performanceMetrics={performanceMetrics}
-      aiUsage={aiUsage}
-      recentExecutions={recentExecutions}
+      liveWorkflows={liveWorkflows}
+      recentProductionRuns={recentProductionRuns}
+      productionRunSummary={productionRunSummary}
     />
   )
 }

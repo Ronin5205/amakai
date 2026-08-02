@@ -54,7 +54,7 @@ import {
 
 function buildSwitchOutputs(node: WorkflowNode): NodePort[] {
   const caseCount = Math.max(2, Number(node.config.caseCount ?? 2))
-  const includeDefault = node.config.includeDefaultOutput !== false
+  const includeDefault = node.config.includeDefaultOutput === true
 
   const caseOutputs = Array.from({ length: caseCount }, (_, index) => {
     const caseNumber = index + 1
@@ -70,7 +70,7 @@ function buildSwitchOutputs(node: WorkflowNode): NodePort[] {
     caseOutputs.push(
       output(
         "default",
-        "Default",
+        "Fallback",
         "Routes execution when no other case matches.",
         "branch"
       )
@@ -78,6 +78,47 @@ function buildSwitchOutputs(node: WorkflowNode): NodePort[] {
   }
 
   return caseOutputs
+}
+
+const MERGE_INPUT_MIN = 2
+const MERGE_INPUT_MAX = 8
+
+export function getMergeInputCount(node: WorkflowNode) {
+  const raw = Number(node.config.inputCount ?? MERGE_INPUT_MIN)
+  if (!Number.isFinite(raw)) {
+    return MERGE_INPUT_MIN
+  }
+  return Math.min(MERGE_INPUT_MAX, Math.max(MERGE_INPUT_MIN, Math.floor(raw)))
+}
+
+export function mergePortId(index: number) {
+  return `input-${index}`
+}
+
+/** Maps legacy Merge edge ports to modern input-N ids. */
+export function normalizeMergePortId(portId: string | undefined) {
+  if (!portId || portId === "main-in") {
+    return mergePortId(1)
+  }
+  if (portId === "input-a") {
+    return mergePortId(1)
+  }
+  if (portId === "input-b") {
+    return mergePortId(2)
+  }
+  return portId
+}
+
+function buildMergeInputs(node: WorkflowNode): NodePort[] {
+  const count = getMergeInputCount(node)
+  return Array.from({ length: count }, (_, index) => {
+    const n = index + 1
+    return input(
+      mergePortId(n),
+      `Input ${n}`,
+      `Incoming branch ${n}. Merge waits for every configured input before firing.`
+    )
+  })
 }
 
 export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
@@ -158,6 +199,67 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
         description: "Select a table by name from Design → Tables.",
       },
       {
+        key: "enableFind",
+        label: "Find rows",
+        type: "boolean",
+        defaultValue: false,
+        description:
+          "When enabled, return only rows that match the find criteria instead of all rows.",
+      },
+      {
+        key: "findColumn",
+        label: "Find column",
+        type: "table-column-select",
+        description: "Table column to compare when finding rows.",
+      },
+      {
+        key: "findOperator",
+        label: "Find operator",
+        type: "select",
+        options: [...COMPARISON_OPERATORS],
+        defaultValue: "equals",
+        description: "Predefined comparison — no JavaScript expressions.",
+      },
+      {
+        key: "findValue",
+        label: "Find value",
+        type: "string",
+        description:
+          "Static value to compare. Leave empty to use the upstream field below instead.",
+      },
+      {
+        key: "findValueField",
+        label: "Find value field",
+        type: "upstream-field",
+        description:
+          "Optional upstream field to use as the find value instead of a static value.",
+      },
+      {
+        key: "writeMode",
+        label: "Write mode",
+        type: "select",
+        options: [
+          { label: "Insert new row", value: "insert" },
+          { label: "Upsert (update or insert)", value: "upsert" },
+        ],
+        defaultValue: "insert",
+        description:
+          "Upsert finds an existing row by match column and updates it; otherwise inserts a new row.",
+      },
+      {
+        key: "matchColumn",
+        label: "Match column",
+        type: "table-column-select",
+        description: "For upsert: column used to find the existing row.",
+      },
+      {
+        key: "matchValueField",
+        label: "Match value field",
+        type: "upstream-field",
+        description:
+          "For upsert: upstream field whose value is compared against the match column.",
+      },
+      {
         key: "columnMappings",
         label: "Column mappings",
         type: "table-column-map",
@@ -218,24 +320,43 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
     catalogItemId: "action.merge",
     inputs: [
       input(
-        "input-a",
-        "Branch A",
-        "First finished path (e.g. true branch or parallel branch A)."
+        "input-1",
+        "Input 1",
+        "Incoming branch 1. Merge waits for every configured input before firing."
       ),
       input(
-        "input-b",
-        "Branch B",
-        "Second finished path (e.g. false branch or parallel branch B)."
+        "input-2",
+        "Input 2",
+        "Incoming branch 2. Merge waits for every configured input before firing."
       ),
     ],
     outputs: [
       output(
         "main-out",
-        "Combined",
-        "Single payload after both branches have completed."
+        "Output",
+        "Single payload after all configured inputs have completed."
       ),
     ],
-    configSchema: [],
+    configSchema: [
+      {
+        key: "inputCount",
+        label: "Number of Inputs",
+        type: "number",
+        defaultValue: 2,
+        description:
+          "How many branches to synchronize (2–8). Merge waits for all connected inputs before firing.",
+      },
+    ],
+    resolvePorts: (node) => ({
+      inputs: buildMergeInputs(node),
+      outputs: [
+        output(
+          "main-out",
+          "Output",
+          "Single payload after all configured inputs have completed."
+        ),
+      ],
+    }),
   },
   "action.aggregate": {
     catalogItemId: "action.aggregate",
@@ -342,7 +463,7 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
       id: "",
       label: "",
       kind: "conditional",
-      config: { caseCount: 2, includeDefaultOutput: true },
+      config: { caseCount: 2, includeDefaultOutput: false },
     }),
     configSchema: [
       {
@@ -354,11 +475,11 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
       },
       {
         key: "includeDefaultOutput",
-        label: "Include default output",
+        label: "Include fallback output",
         type: "boolean",
-        defaultValue: true,
+        defaultValue: false,
         description:
-          "When enabled, unmatched payloads route to Default after all cases are checked.",
+          "When enabled, unmatched payloads route to Fallback after all cases are checked. Off by default.",
       },
       {
         key: "switchCases",
@@ -379,8 +500,8 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
     outputs: [
       output(
         "matching-items",
-        "Matching Items",
-        "Emits only items that satisfy the filter condition."
+        "Kept",
+        "Emits only payloads that satisfy the filter condition. Non-matching payloads are dropped."
       ),
     ],
     configSchema: [
@@ -550,8 +671,17 @@ export function getDefaultVariantConfig(catalogItemId: string) {
 
   if (catalogItemId === "condition.switch") {
     const caseCount = Math.max(2, Number(config.caseCount ?? 2))
-    const includeDefault = config.includeDefaultOutput !== false
+    const includeDefault = config.includeDefaultOutput === true
     config.switchCases = buildDefaultSwitchCases(caseCount, includeDefault)
+  }
+
+  if (catalogItemId === "action.merge") {
+    config.inputCount = getMergeInputCount({
+      id: "",
+      label: "",
+      kind: "sequential",
+      config,
+    })
   }
 
   if (catalogItemId === "action.edit-fields") {

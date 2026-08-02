@@ -175,8 +175,9 @@ export const COMPONENT_VARIANTS: ComponentCatalogItem[] = [
     kind: "sequential",
     label: "Combine Branches",
     description:
-      "Synchronizes two paths after Parallel or IF — waits for both, then merges payloads.",
+      "Synchronizes multiple paths after Parallel — waits for all inputs (default 2, configurable), then merges payloads.",
     categoryId: "action",
+    defaultConfig: { inputCount: 2 },
   },
   {
     id: "action.aggregate",
@@ -215,7 +216,7 @@ export const COMPONENT_VARIANTS: ComponentCatalogItem[] = [
     description:
       "Routes execution to the first matching case. Each case compares an upstream JSON field using predefined operators (equals, contains, greater than, etc.) — not JavaScript.",
     categoryId: "condition",
-    defaultConfig: { caseCount: 2, includeDefaultOutput: true },
+    defaultConfig: { caseCount: 2, includeDefaultOutput: false },
   },
   {
     id: "condition.filter",

@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
+import { NotificationMenu } from "@/components/notification-menu"
 import { UserMenu } from "@/components/user-menu"
 import { getBreadcrumbs } from "@/lib/navigation"
 import {
@@ -76,7 +77,10 @@ export function PortalHeader() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <UserMenu />
+      <div className="flex shrink-0 items-center gap-1">
+        <NotificationMenu />
+        <UserMenu />
+      </div>
     </header>
   )
 }

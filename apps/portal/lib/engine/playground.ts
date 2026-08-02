@@ -57,14 +57,30 @@ import {
   buildTriggerPlaygroundPayload,
   buildTriggerPayloadFromValues,
   countPopulatedRowFields,
+  filterDataTableRowsByColumn,
   getDataTableOperation,
+  getDataTableWriteMode,
+  isDataTableFindEnabled,
   mergePayload,
+  resolveFindCompareValue,
+  resolvePayloadField,
 } from "@/lib/engine/playground-data-table"
 import { resolveCollectionFromField } from "@/lib/engine/loop-collection"
 import {
   createMergeBuffer,
   handleMergeNodeArrival,
+  hasMergeInputConnected,
 } from "@/lib/engine/merge-buffer"
+import {
+  beginLoopFanOut,
+  createLoopCompletionBuffer,
+  settleLoopWorkUnit,
+  type LoopCompletionBuffer,
+  type LoopWorkContext,
+} from "@/lib/engine/loop-completion"
+import {
+  getMergeInputCount,
+} from "@/lib/design/component-variant-definitions"
 import {
   aggregateItemsByField,
 } from "@/lib/engine/payload-transforms"
@@ -90,7 +106,7 @@ function resolveSwitchOutputPort(node: WorkflowNode, payload: unknown) {
     return validation
   }
 
-  const includeDefault = node.config.includeDefaultOutput !== false
+  const includeDefault = node.config.includeDefaultOutput === true
   const matched = validation.rules.find(
     (rule) =>
       !isSwitchDefaultCase(rule) &&
@@ -119,13 +135,147 @@ function resolveSwitchOutputPort(node: WorkflowNode, payload: unknown) {
     return {
       ok: true as const,
       portId: defaultRule.portId,
-      message: "Switch routed to Default (no case matched)",
+      message: "Switch routed to Fallback (no case matched)",
     }
   }
 
   return {
     ok: false as const,
-    message: "Switch did not match any case and no default output is configured",
+    message: "Switch did not match any case and no fallback output is configured",
+  }
+}
+
+function formatMergeWaitingMessage(
+  node: WorkflowNode,
+  port: string,
+  received: number,
+  expected: number
+) {
+  return `Input ${port.replace("input-", "")} arrived (${received}/${expected}) — waiting for remaining inputs on "${node.label}"`
+}
+
+function serializeLoopCompletions(buffer: LoopCompletionBuffer) {
+  return Object.fromEntries(buffer.entries())
+}
+
+function restoreLoopCompletions(
+  serialized?: Record<
+    string,
+    { remaining: number; totalItems: number; donePayload: unknown }
+  >
+) {
+  const buffer = createLoopCompletionBuffer()
+  if (!serialized) {
+    return buffer
+  }
+  for (const [key, value] of Object.entries(serialized)) {
+    buffer.set(key, { ...value })
+  }
+  return buffer
+}
+
+function enqueueDoneEdges(
+  queue: PlaygroundQueueItem[],
+  outgoing: ReturnType<typeof buildOutgoingEdgeMap>,
+  loopNode: WorkflowNode,
+  donePayload: unknown
+) {
+  const doneEdges = getOutgoingEdges(outgoing, loopNode, "done")
+  for (const edge of doneEdges) {
+    queue.push({
+      nodeId: edge.target,
+      payload: donePayload,
+      viaEdgeId: edge.id,
+    })
+  }
+}
+
+function fanOutLoopItems(
+  queue: PlaygroundQueueItem[],
+  loopBuffers: LoopCompletionBuffer,
+  outgoing: ReturnType<typeof buildOutgoingEdgeMap>,
+  loopNode: WorkflowNode,
+  result: {
+    payload: unknown
+    loopItems: unknown[]
+  }
+) {
+  const loopEdges = getOutgoingEdges(outgoing, loopNode, "loop")
+  const donePayload = mergePayload(result.payload, {
+    loopCompleted: true,
+    loopItemCount: result.loopItems.length,
+  })
+
+  if (loopEdges.length === 0 || result.loopItems.length === 0) {
+    enqueueDoneEdges(queue, outgoing, loopNode, donePayload)
+    return
+  }
+
+  const workUnits = result.loopItems.length * loopEdges.length
+  beginLoopFanOut(
+    loopBuffers,
+    loopNode.id,
+    workUnits,
+    result.loopItems.length,
+    donePayload
+  )
+
+  const loopContext: LoopWorkContext = { loopNodeId: loopNode.id }
+
+  for (let index = 0; index < result.loopItems.length; index += 1) {
+    const itemPayload = mergePayload(result.payload, {
+      item: result.loopItems[index],
+      loopItem: result.loopItems[index],
+      loopIndex: index,
+      loopTotal: result.loopItems.length,
+    })
+
+    for (const edge of loopEdges) {
+      queue.push({
+        nodeId: edge.target,
+        payload: itemPayload,
+        viaEdgeId: edge.id,
+        loopContext,
+      })
+    }
+  }
+}
+
+function enqueueChildrenWithLoopContext(
+  queue: PlaygroundQueueItem[],
+  loopBuffers: LoopCompletionBuffer,
+  outgoing: ReturnType<typeof buildOutgoingEdgeMap>,
+  loopNodeById: Map<string, WorkflowNode>,
+  edges: Array<{ nodeId: string; payload: unknown; viaEdgeId: string }>,
+  parentLoopContext?: LoopWorkContext
+) {
+  for (const entry of edges) {
+    queue.push({
+      ...entry,
+      loopContext: parentLoopContext,
+    })
+  }
+
+  if (!parentLoopContext) {
+    return
+  }
+
+  const settled = settleLoopWorkUnit(
+    loopBuffers,
+    parentLoopContext.loopNodeId,
+    edges.length
+  )
+
+  if (settled.completed && settled.tracker) {
+    const loopNode = loopNodeById.get(parentLoopContext.loopNodeId)
+    if (loopNode) {
+      enqueueDoneEdges(
+        queue,
+        outgoing,
+        loopNode,
+        settled.tracker.donePayload
+      )
+    }
   }
 }
 
@@ -180,6 +330,8 @@ type NodeProcessResult =
       terminal?: boolean
       loopItems?: unknown[]
       fanOutOutputs?: Array<{ portId: string; payload: unknown }>
+      /** Filter dropped this payload — runner must not enqueue downstream edges. */
+      filteredOut?: boolean
     }
   | { ok: false; message: string; pendingApproval?: boolean; pendingWait?: boolean; payload?: unknown; durationMs?: number }
 
@@ -236,6 +388,26 @@ async function processDataTableNode(
       }
     }
 
+    const writeMode = getDataTableWriteMode(node)
+    const matchColumn = String(node.config.matchColumn ?? "").trim()
+    const matchValueField = String(node.config.matchValueField ?? "").trim()
+
+    if (writeMode === "upsert") {
+      if (!matchColumn) {
+        return {
+          ok: false,
+          message: "Data Table upsert requires a match column",
+        }
+      }
+      if (!matchValueField) {
+        return {
+          ok: false,
+          message:
+            "Data Table upsert requires a match value field from the previous node",
+        }
+      }
+    }
+
     const rowData = buildDataTableRowFromPayload(payload, mappings)
     if (countPopulatedRowFields(rowData) === 0) {
       return {
@@ -245,20 +417,41 @@ async function processDataTableNode(
       }
     }
 
-    const result = await playgroundDataTableWriteAction(tableName, rowData)
+    const matchValue =
+      writeMode === "upsert"
+        ? resolvePayloadField(payload, matchValueField)
+        : undefined
+
+    if (writeMode === "upsert" && matchValue === undefined) {
+      return {
+        ok: false,
+        message:
+          "Data Table upsert could not resolve the match value from the previous node.",
+      }
+    }
+
+    const result = await playgroundDataTableWriteAction(tableName, rowData, {
+      writeMode,
+      matchColumn,
+      matchValue,
+    })
 
     if ("error" in result) {
       return { ok: false, message: result.error }
     }
+
+    const actionLabel = result.updated ? "Updated" : "Wrote"
 
     return passThrough(
       node,
       mergePayload(payload, {
         dataTableName: result.tableName,
         dataTableOperation: "write",
+        dataTableWriteMode: writeMode,
+        dataTableRowUpdated: result.updated === true,
         dataTableRow: result.row.data,
       }),
-      `Wrote 1 row (${countPopulatedRowFields(rowData)} field(s)) to "${result.tableName}" (playground)`
+      `${actionLabel} 1 row (${countPopulatedRowFields(rowData)} field(s)) to "${result.tableName}" (playground)`
     )
   }
 
@@ -268,17 +461,62 @@ async function processDataTableNode(
     return { ok: false, message: result.error }
   }
 
-  const rows = result.rows.map((row) => row.data)
+  let matchedRows = result.rows
+
+  if (isDataTableFindEnabled(node)) {
+    const findColumn = String(node.config.findColumn ?? "").trim()
+    if (!findColumn) {
+      return {
+        ok: false,
+        message: "Data Table find requires a find column",
+      }
+    }
+
+    const compareValue = resolveFindCompareValue(
+      payload,
+      node.config.findValue,
+      node.config.findValueField
+    )
+
+    if (compareValue === undefined) {
+      return {
+        ok: false,
+        message:
+          "Data Table find requires a find value or an upstream find value field",
+      }
+    }
+
+    matchedRows = filterDataTableRowsByColumn(
+      result.rows,
+      findColumn,
+      node.config.findOperator,
+      compareValue
+    )
+  }
+
+  const rows = matchedRows.map((row) => row.data)
+  const payloadPatch: Record<string, unknown> = {
+    dataTableName: result.tableName,
+    dataTableOperation: "read",
+    dataTableRows: rows,
+    dataTableRowCount: rows.length,
+  }
+
+  if (isDataTableFindEnabled(node)) {
+    payloadPatch.dataTableFindEnabled = true
+    if (rows.length === 1) {
+      payloadPatch.dataTableRow = rows[0]
+    }
+  }
+
+  const findLabel = isDataTableFindEnabled(node)
+    ? `Found ${rows.length} matching row(s)`
+    : `Read ${rows.length} row(s)`
 
   return passThrough(
     node,
-    mergePayload(payload, {
-      dataTableName: result.tableName,
-      dataTableOperation: "read",
-      dataTableRows: rows,
-      dataTableRowCount: rows.length,
-    }),
-    `Read ${rows.length} row(s) from "${result.tableName}" (playground)`
+    mergePayload(payload, payloadPatch),
+    `${findLabel} from "${result.tableName}" (playground)`
   )
 }
 
@@ -446,10 +684,26 @@ async function processNodeInPlayground(
           return validation
         }
 
+        const matches = evaluateComparisonRule(
+          payload,
+          String(node.config.field),
+          node.config.operator,
+          String(node.config.compareValue ?? "")
+        )
+
+        if (!matches) {
+          return {
+            ok: true,
+            payload,
+            message: "Filter dropped payload (condition not met)",
+            filteredOut: true,
+          }
+        }
+
         return passThrough(
           node,
           payload,
-          "Filtered matching items (playground)",
+          "Filter kept payload",
           "matching-items"
         )
       }
@@ -469,11 +723,18 @@ async function processNodeInPlayground(
           return validation
         }
 
+        const matches = evaluateComparisonRule(
+          payload,
+          String(node.config.field),
+          node.config.operator,
+          String(node.config.compareValue ?? "")
+        )
+
         return passThrough(
           node,
           payload,
-          "IF evaluated → True branch (playground)",
-          "true"
+          matches ? "IF evaluated → True branch" : "IF evaluated → False branch",
+          matches ? "true" : "false"
         )
       }
 
@@ -652,17 +913,18 @@ function validateGraphStructure(
     const catalogItemId = getCatalogItemId(node)
 
     if (catalogItemId === "action.merge") {
-      if (!hasIncomingEdgeOnPort(edges, node, "input-a")) {
-        return createStep(
-          "finish_fail",
-          createLog(`"${node.label}" is missing a connection on Input A`, "error", node)
-        )
-      }
-      if (!hasIncomingEdgeOnPort(edges, node, "input-b")) {
-        return createStep(
-          "finish_fail",
-          createLog(`"${node.label}" is missing a connection on Input B`, "error", node)
-        )
+      const inputCount = getMergeInputCount(node)
+      for (let index = 1; index <= inputCount; index += 1) {
+        if (!hasMergeInputConnected(edges, node, index)) {
+          return createStep(
+            "finish_fail",
+            createLog(
+              `"${node.label}" is missing a connection on Input ${index}`,
+              "error",
+              node
+            )
+          )
+        }
       }
       continue
     }
@@ -717,11 +979,7 @@ export async function runPlaygroundValidation(
   const outgoing = buildOutgoingEdgeMap(edges)
   const triggers = findTriggerNodes(nodes)
 
-  type QueueItem = {
-    nodeId: string
-    payload: unknown
-    viaEdgeId?: string
-  }
+  type QueueItem = PlaygroundQueueItem
 
   const queue: QueueItem[] = triggers.map((node) => ({
     nodeId: node.id,
@@ -731,6 +989,7 @@ export async function runPlaygroundValidation(
   let failed = false
   let errorMessage: string | undefined
   const mergeBuffers = createMergeBuffer()
+  const loopBuffers = createLoopCompletionBuffer()
 
   while (queue.length > 0 && steps.length < MAX_PLAYGROUND_STEPS && !failed) {
     const current = queue.shift()
@@ -758,7 +1017,12 @@ export async function runPlaygroundValidation(
         createStep(
           "node_enter",
           createLog(
-            `Branch ${mergeArrival.port === "input-a" ? "A" : "B"} arrived — waiting for the other branch on "${node.label}"`,
+            formatMergeWaitingMessage(
+              node,
+              mergeArrival.port,
+              mergeArrival.received,
+              mergeArrival.expected
+            ),
             "info",
             node
           ),
@@ -834,7 +1098,9 @@ export async function runPlaygroundValidation(
               kind: "approval",
               nodeId: node.id,
               payload: current.payload,
+              loopContext: current.loopContext,
             },
+            loopCompletions: serializeLoopCompletions(loopBuffers),
           },
         }
       }
@@ -875,7 +1141,9 @@ export async function runPlaygroundValidation(
               payload: current.payload,
               durationMs,
               startedAt,
+              loopContext: current.loopContext,
             },
+            loopCompletions: serializeLoopCompletions(loopBuffers),
           },
         }
       }
@@ -926,40 +1194,23 @@ export async function runPlaygroundValidation(
       )
     )
 
+    if (result.filteredOut) {
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        [],
+        current.loopContext
+      )
+      continue
+    }
+
     if (result.loopItems) {
-      const loopEdges = getOutgoingEdges(outgoing, node, "loop")
-
-      for (let index = 0; index < result.loopItems.length; index += 1) {
-        const itemPayload = mergePayload(result.payload, {
-          item: result.loopItems[index],
-          loopItem: result.loopItems[index],
-          loopIndex: index,
-          loopTotal: result.loopItems.length,
-        })
-
-        for (const edge of loopEdges) {
-          queue.push({
-            nodeId: edge.target,
-            payload: itemPayload,
-            viaEdgeId: edge.id,
-          })
-        }
-      }
-
-      const doneEdges = getOutgoingEdges(outgoing, node, "done")
-      const donePayload = mergePayload(result.payload, {
-        loopCompleted: true,
-        loopItemCount: result.loopItems.length,
+      fanOutLoopItems(queue, loopBuffers, outgoing, node, {
+        payload: result.payload,
+        loopItems: result.loopItems,
       })
-
-      for (const edge of doneEdges) {
-        queue.push({
-          nodeId: edge.target,
-          payload: donePayload,
-          viaEdgeId: edge.id,
-        })
-      }
-
       continue
     }
 
@@ -968,6 +1219,14 @@ export async function runPlaygroundValidation(
       : []
 
     if (result.terminal || definition.outputs.length === 0) {
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        [],
+        current.loopContext
+      )
       steps.push(
         createStep(
           "node_exit",
@@ -979,34 +1238,68 @@ export async function runPlaygroundValidation(
     }
 
     if (node.kind === "parallel") {
+      const parallelChildren: Array<{
+        nodeId: string
+        payload: unknown
+        viaEdgeId: string
+      }> = []
       for (const port of definition.outputs) {
         const portEdges = getOutgoingEdges(outgoing, node, port.id)
         for (const edge of portEdges) {
-          queue.push({
+          parallelChildren.push({
             nodeId: edge.target,
             payload: result.payload,
             viaEdgeId: edge.id,
           })
         }
       }
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        parallelChildren,
+        current.loopContext
+      )
       continue
     }
 
     if (result.fanOutOutputs) {
+      const fanChildren: Array<{
+        nodeId: string
+        payload: unknown
+        viaEdgeId: string
+      }> = []
       for (const output of result.fanOutOutputs) {
         const portEdges = getOutgoingEdges(outgoing, node, output.portId)
         for (const edge of portEdges) {
-          queue.push({
+          fanChildren.push({
             nodeId: edge.target,
             payload: output.payload,
             viaEdgeId: edge.id,
           })
         }
       }
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        fanChildren,
+        current.loopContext
+      )
       continue
     }
 
     if (nextEdges.length === 0) {
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        [],
+        current.loopContext
+      )
       steps.push(
         createStep(
           "node_exit",
@@ -1017,13 +1310,18 @@ export async function runPlaygroundValidation(
       continue
     }
 
-    for (const edge of nextEdges) {
-      queue.push({
+    enqueueChildrenWithLoopContext(
+      queue,
+      loopBuffers,
+      outgoing,
+      nodeById,
+      nextEdges.map((edge) => ({
         nodeId: edge.target,
         payload: result.payload,
         viaEdgeId: edge.id,
-      })
-    }
+      })),
+      current.loopContext
+    )
   }
 
   if (steps.length >= MAX_PLAYGROUND_STEPS) {
@@ -1151,53 +1449,50 @@ export async function resumePlaygroundValidation(
   let failed = false
   let errorMessage: string | undefined
   const definition = resolveNodeDefinition(pendingNode)
+  const loopBuffers = restoreLoopCompletions(continuation.loopCompletions)
+  const pendingLoopContext = continuation.pending.loopContext
 
-  if (result.loopItems) {
-    const loopEdges = getOutgoingEdges(outgoing, pendingNode, "loop")
-
-    for (let index = 0; index < result.loopItems.length; index += 1) {
-      const itemPayload = mergePayload(result.payload, {
-        item: result.loopItems[index],
-        loopItem: result.loopItems[index],
-        loopIndex: index,
-        loopTotal: result.loopItems.length,
-      })
-
-      for (const edge of loopEdges) {
-        queue.push({
-          nodeId: edge.target,
-          payload: itemPayload,
-          viaEdgeId: edge.id,
-        })
-      }
-    }
-
-    const doneEdges = getOutgoingEdges(outgoing, pendingNode, "done")
-    const donePayload = mergePayload(result.payload, {
-      loopCompleted: true,
-      loopItemCount: result.loopItems.length,
+  if (result.filteredOut) {
+    enqueueChildrenWithLoopContext(
+      queue,
+      loopBuffers,
+      outgoing,
+      nodeById,
+      [],
+      pendingLoopContext
+    )
+  } else if (result.loopItems) {
+    fanOutLoopItems(queue, loopBuffers, outgoing, pendingNode, {
+      payload: result.payload,
+      loopItems: result.loopItems,
     })
-
-    for (const edge of doneEdges) {
-      queue.push({
-        nodeId: edge.target,
-        payload: donePayload,
-        viaEdgeId: edge.id,
-      })
-    }
   } else {
     const nextEdges = result.outputPort
       ? getOutgoingEdges(outgoing, pendingNode, result.outputPort)
       : []
 
     if (!result.terminal && definition.outputs.length > 0) {
-      for (const edge of nextEdges) {
-        queue.push({
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        nextEdges.map((edge) => ({
           nodeId: edge.target,
           payload: result.payload,
           viaEdgeId: edge.id,
-        })
-      }
+        })),
+        pendingLoopContext
+      )
+    } else {
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        [],
+        pendingLoopContext
+      )
     }
   }
 
@@ -1229,7 +1524,12 @@ export async function resumePlaygroundValidation(
         createStep(
           "node_enter",
           createLog(
-            `Branch ${mergeArrival.port === "input-a" ? "A" : "B"} arrived — waiting for the other branch on "${node.label}"`,
+            formatMergeWaitingMessage(
+              node,
+              mergeArrival.port,
+              mergeArrival.received,
+              mergeArrival.expected
+            ),
             "info",
             node
           ),
@@ -1305,7 +1605,9 @@ export async function resumePlaygroundValidation(
               kind: "approval",
               nodeId: node.id,
               payload: current.payload,
+              loopContext: current.loopContext,
             },
+            loopCompletions: serializeLoopCompletions(loopBuffers),
           },
         }
       }
@@ -1347,7 +1649,9 @@ export async function resumePlaygroundValidation(
               payload: current.payload,
               durationMs,
               startedAt,
+              loopContext: current.loopContext,
             },
+            loopCompletions: serializeLoopCompletions(loopBuffers),
           },
         }
       }
@@ -1398,40 +1702,23 @@ export async function resumePlaygroundValidation(
       )
     )
 
+    if (nodeResult.filteredOut) {
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        [],
+        current.loopContext
+      )
+      continue
+    }
+
     if (nodeResult.loopItems) {
-      const loopEdges = getOutgoingEdges(outgoing, node, "loop")
-
-      for (let index = 0; index < nodeResult.loopItems.length; index += 1) {
-        const itemPayload = mergePayload(nodeResult.payload, {
-          item: nodeResult.loopItems[index],
-          loopItem: nodeResult.loopItems[index],
-          loopIndex: index,
-          loopTotal: nodeResult.loopItems.length,
-        })
-
-        for (const edge of loopEdges) {
-          queue.push({
-            nodeId: edge.target,
-            payload: itemPayload,
-            viaEdgeId: edge.id,
-          })
-        }
-      }
-
-      const doneEdges = getOutgoingEdges(outgoing, node, "done")
-      const donePayload = mergePayload(nodeResult.payload, {
-        loopCompleted: true,
-        loopItemCount: nodeResult.loopItems.length,
+      fanOutLoopItems(queue, loopBuffers, outgoing, node, {
+        payload: nodeResult.payload,
+        loopItems: nodeResult.loopItems,
       })
-
-      for (const edge of doneEdges) {
-        queue.push({
-          nodeId: edge.target,
-          payload: donePayload,
-          viaEdgeId: edge.id,
-        })
-      }
-
       continue
     }
 
@@ -1440,48 +1727,95 @@ export async function resumePlaygroundValidation(
       : []
 
     if (nodeResult.terminal || nodeDefinition.outputs.length === 0) {
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        [],
+        current.loopContext
+      )
       continue
     }
 
     if (node.kind === "parallel") {
+      const parallelChildren: Array<{
+        nodeId: string
+        payload: unknown
+        viaEdgeId: string
+      }> = []
       for (const port of nodeDefinition.outputs) {
         const portEdges = getOutgoingEdges(outgoing, node, port.id)
         for (const edge of portEdges) {
-          queue.push({
+          parallelChildren.push({
             nodeId: edge.target,
             payload: nodeResult.payload,
             viaEdgeId: edge.id,
           })
         }
       }
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        parallelChildren,
+        current.loopContext
+      )
       continue
     }
 
     if (nodeResult.fanOutOutputs) {
+      const fanChildren: Array<{
+        nodeId: string
+        payload: unknown
+        viaEdgeId: string
+      }> = []
       for (const output of nodeResult.fanOutOutputs) {
         const portEdges = getOutgoingEdges(outgoing, node, output.portId)
         for (const edge of portEdges) {
-          queue.push({
+          fanChildren.push({
             nodeId: edge.target,
             payload: output.payload,
             viaEdgeId: edge.id,
           })
         }
       }
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        fanChildren,
+        current.loopContext
+      )
       continue
     }
 
     if (nextEdges.length === 0) {
+      enqueueChildrenWithLoopContext(
+        queue,
+        loopBuffers,
+        outgoing,
+        nodeById,
+        [],
+        current.loopContext
+      )
       continue
     }
 
-    for (const edge of nextEdges) {
-      queue.push({
+    enqueueChildrenWithLoopContext(
+      queue,
+      loopBuffers,
+      outgoing,
+      nodeById,
+      nextEdges.map((edge) => ({
         nodeId: edge.target,
         payload: nodeResult.payload,
         viaEdgeId: edge.id,
-      })
-    }
+      })),
+      current.loopContext
+    )
   }
 
   if (steps.length >= MAX_PLAYGROUND_STEPS) {

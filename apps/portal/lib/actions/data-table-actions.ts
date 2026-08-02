@@ -6,6 +6,7 @@ import {
   createDataTable,
   deleteDataTable,
   deleteDataTableRow,
+  duplicateDataTable,
   insertDataTableRow,
   listDataTableRows,
   saveDataTable,
@@ -61,6 +62,24 @@ export async function deleteDataTableAction(
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Failed to delete table.",
+    }
+  }
+}
+
+export type DuplicateDataTableResult = { table: DataTable } | { error: string }
+
+export async function duplicateDataTableAction(
+  tableId: string
+): Promise<DuplicateDataTableResult> {
+  try {
+    const table = await duplicateDataTable(tableId)
+    revalidatePath("/design/tables")
+    revalidatePath("/design/workflow-editor")
+    return { table }
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Failed to duplicate table.",
     }
   }
 }

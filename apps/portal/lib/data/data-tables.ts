@@ -306,6 +306,50 @@ export async function deleteDataTable(tableId: string): Promise<void> {
   }
 }
 
+export async function duplicateDataTable(tableId: string): Promise<DataTable> {
+  const auth = await getAuthenticatedUserId()
+  if (!auth) {
+    throw new Error("Sign in to duplicate tables.")
+  }
+
+  if (!isPersistedDataTableId(tableId)) {
+    throw new Error("Table not found.")
+  }
+
+  const source = await getDataTable(tableId)
+  if (!source) {
+    throw new Error("Table not found.")
+  }
+
+  const uniqueName = await generateUniqueTableName(
+    auth.supabase,
+    auth.userId,
+    `${source.name} copy`
+  )
+
+  const { data, error } = await auth.supabase
+    .from("data_tables")
+    .insert({
+      user_id: auth.userId,
+      name: uniqueName,
+      description: source.description ?? null,
+      columns: source.columns,
+    })
+    .select("*")
+    .single()
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Failed to duplicate table.")
+  }
+
+  const rows = await listDataTableRows(tableId)
+  for (const row of rows) {
+    await insertDataTableRow(data.id, row.data)
+  }
+
+  return mapDataTableRow(data as DataTableRowDb, rows.length)
+}
+
 export async function listDataTableRows(tableId: string): Promise<DataTableRow[]> {
   const auth = await getAuthenticatedUserId()
   if (!auth || !isPersistedDataTableId(tableId)) {

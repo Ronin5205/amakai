@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import {
-  ArrowsOutSimpleIcon,
   CornersInIcon,
   CornersOutIcon,
   DotsSixVerticalIcon,
@@ -13,12 +12,17 @@ import { NodeInspector } from "@/components/design/node-inspector"
 import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
 import type { DataTableSummary } from "@/lib/domain/data-table"
 import type { PlaygroundStep } from "@/lib/engine/types"
+import {
+  clampInspectorPosition,
+  computeOppositeInspectorPosition,
+  INSPECTOR_DEFAULT_TOP,
+  INSPECTOR_EDGE_MARGIN,
+  type InspectorAnchorScreen,
+} from "@/lib/design/inspector-placement"
 import { Button } from "@amakai/shared/components/ui/button"
 import { cn } from "@amakai/shared/lib/utils"
 
-const DEFAULT_POSITION = { x: 12, y: 120 }
-
-type InspectorSizeMode = "default" | "expanded" | "maximized"
+type InspectorSizeMode = "default" | "maximized"
 
 export interface EditorNodeInspectorPanelProps {
   open: boolean
@@ -26,6 +30,7 @@ export interface EditorNodeInspectorPanelProps {
   workflow: Workflow
   node: WorkflowNode | null
   selectedCount: number
+  anchorScreen: InspectorAnchorScreen | null
   dataTables?: DataTableSummary[]
   validationSteps?: PlaygroundStep[]
   onLabelChange: (label: string) => void
@@ -42,31 +47,13 @@ type DragState = {
   originY: number
 }
 
-function clampPosition(
-  x: number,
-  y: number,
-  panel: HTMLDivElement | null,
-  parent: HTMLElement | null
-) {
-  if (!panel || !parent) {
-    return { x, y }
-  }
-
-  const maxX = Math.max(0, parent.clientWidth - panel.offsetWidth)
-  const maxY = Math.max(0, parent.clientHeight - panel.offsetHeight)
-
-  return {
-    x: Math.min(maxX, Math.max(0, x)),
-    y: Math.min(maxY, Math.max(0, y)),
-  }
-}
-
 export function EditorNodeInspectorPanel({
   open,
   onClose,
   workflow,
   node,
   selectedCount,
+  anchorScreen,
   dataTables,
   validationSteps,
   onLabelChange,
@@ -76,42 +63,85 @@ export function EditorNodeInspectorPanel({
 }: EditorNodeInspectorPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null)
   const dragRef = React.useRef<DragState | null>(null)
-  const [position, setPosition] = React.useState(DEFAULT_POSITION)
+  const manualPositionRef = React.useRef(false)
+  const anchorNodeIdRef = React.useRef<string | null>(null)
+  const [position, setPosition] = React.useState({
+    x: INSPECTOR_EDGE_MARGIN,
+    y: INSPECTOR_DEFAULT_TOP,
+  })
   const [isDragging, setIsDragging] = React.useState(false)
   const [sizeMode, setSizeMode] = React.useState<InspectorSizeMode>("default")
-  const restoredPositionRef = React.useRef(DEFAULT_POSITION)
-  const restoredSizeModeRef = React.useRef<InspectorSizeMode>("default")
+  const restoredPositionRef = React.useRef({
+    x: INSPECTOR_EDGE_MARGIN,
+    y: INSPECTOR_DEFAULT_TOP,
+  })
 
   const isMaximized = sizeMode === "maximized"
-  const isExpanded = sizeMode === "expanded"
+
+  const applyAutoPosition = React.useCallback(() => {
+    if (manualPositionRef.current || isMaximized) {
+      return
+    }
+
+    const panel = panelRef.current
+    const parent = panel?.offsetParent as HTMLElement | null
+    const containerWidth =
+      anchorScreen?.containerWidth ?? parent?.clientWidth ?? 0
+    const containerHeight =
+      anchorScreen?.containerHeight ?? parent?.clientHeight ?? 0
+    const panelWidth = panel?.offsetWidth ?? Math.min(containerWidth, 512)
+    const panelHeight = panel?.offsetHeight ?? 320
+
+    if (anchorScreen && containerWidth > 0 && containerHeight > 0) {
+      setPosition(
+        computeOppositeInspectorPosition(
+          anchorScreen,
+          panelWidth,
+          panelHeight
+        )
+      )
+      return
+    }
+
+    setPosition(
+      clampInspectorPosition(
+        INSPECTOR_EDGE_MARGIN,
+        INSPECTOR_DEFAULT_TOP,
+        panelWidth,
+        panelHeight,
+        containerWidth,
+        containerHeight
+      )
+    )
+  }, [anchorScreen, isMaximized])
 
   React.useEffect(() => {
     if (!open) {
       setSizeMode("default")
-      setPosition(DEFAULT_POSITION)
+      manualPositionRef.current = false
+      anchorNodeIdRef.current = null
+      setPosition({
+        x: INSPECTOR_EDGE_MARGIN,
+        y: INSPECTOR_DEFAULT_TOP,
+      })
     }
   }, [open])
 
-  const clampToContainer = React.useCallback(
-    (x: number, y: number) => {
-      if (isMaximized) {
-        return { x, y }
-      }
-
-      const panel = panelRef.current
-      const parent = panel?.offsetParent as HTMLElement | null
-      return clampPosition(x, y, panel, parent)
-    },
-    [isMaximized]
-  )
+  React.useEffect(() => {
+    const nextAnchorId = node?.id ?? null
+    if (nextAnchorId !== anchorNodeIdRef.current) {
+      anchorNodeIdRef.current = nextAnchorId
+      manualPositionRef.current = false
+    }
+  }, [node?.id])
 
   React.useLayoutEffect(() => {
     if (!open || isMaximized) {
       return
     }
 
-    setPosition((current) => clampToContainer(current.x, current.y))
-  }, [clampToContainer, isMaximized, open, sizeMode])
+    applyAutoPosition()
+  }, [applyAutoPosition, open, isMaximized, selectedCount])
 
   React.useEffect(() => {
     if (!open || isMaximized) {
@@ -119,26 +149,41 @@ export function EditorNodeInspectorPanel({
     }
 
     const onResize = () => {
-      setPosition((current) => clampToContainer(current.x, current.y))
+      if (manualPositionRef.current) {
+        const panel = panelRef.current
+        const parent = panel?.offsetParent as HTMLElement | null
+        if (!panel || !parent) {
+          return
+        }
+
+        setPosition((current) =>
+          clampInspectorPosition(
+            current.x,
+            current.y,
+            panel.offsetWidth,
+            panel.offsetHeight,
+            parent.clientWidth,
+            parent.clientHeight
+          )
+        )
+        return
+      }
+
+      applyAutoPosition()
     }
 
     window.addEventListener("resize", onResize)
     return () => window.removeEventListener("resize", onResize)
-  }, [clampToContainer, isMaximized, open, sizeMode])
-
-  const handleToggleExpanded = () => {
-    setSizeMode((current) => (current === "expanded" ? "default" : "expanded"))
-  }
+  }, [applyAutoPosition, isMaximized, open])
 
   const handleToggleMaximized = () => {
     if (isMaximized) {
-      setSizeMode(restoredSizeModeRef.current)
+      setSizeMode("default")
       setPosition(restoredPositionRef.current)
       return
     }
 
     restoredPositionRef.current = position
-    restoredSizeModeRef.current = sizeMode
     setSizeMode("maximized")
   }
 
@@ -156,6 +201,7 @@ export function EditorNodeInspectorPanel({
       originX: position.x,
       originY: position.y,
     }
+    manualPositionRef.current = true
     setIsDragging(true)
   }
 
@@ -166,10 +212,21 @@ export function EditorNodeInspectorPanel({
     }
 
     event.preventDefault()
+
+    const panel = panelRef.current
+    const parent = panel?.offsetParent as HTMLElement | null
+    if (!panel || !parent) {
+      return
+    }
+
     setPosition(
-      clampToContainer(
+      clampInspectorPosition(
         drag.originX + event.clientX - drag.startX,
-        drag.originY + event.clientY - drag.startY
+        drag.originY + event.clientY - drag.startY,
+        panel.offsetWidth,
+        panel.offsetHeight,
+        parent.clientWidth,
+        parent.clientHeight
       )
     )
   }
@@ -197,12 +254,7 @@ export function EditorNodeInspectorPanel({
         "pointer-events-auto absolute z-30 flex min-h-0 flex-col overflow-hidden border bg-background shadow-md",
         isMaximized
           ? "inset-0 z-40 max-h-none w-full rounded-none border-0"
-          : cn(
-              "rounded-none",
-              isExpanded
-                ? "max-h-[min(90vh,calc(100%-1.5rem))] w-[min(calc(100%-1.5rem),32rem)]"
-                : "max-h-[min(75vh,calc(100%-1.5rem))] w-[min(calc(100%-1.5rem),340px)]"
-            ),
+          : "max-h-[min(90vh,calc(100%-1.5rem))] w-[min(calc(100%-1.5rem),32rem)] rounded-none",
         isDragging && "select-none",
         className
       )}
@@ -229,18 +281,6 @@ export function EditorNodeInspectorPanel({
             </span>
           )}
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={handleToggleExpanded}
-          aria-label={isExpanded || isMaximized ? "Use compact inspector width" : "Expand inspector width"}
-          aria-pressed={isExpanded || isMaximized}
-          disabled={isMaximized}
-        >
-          <ArrowsOutSimpleIcon />
-        </Button>
         <Button
           type="button"
           variant="ghost"

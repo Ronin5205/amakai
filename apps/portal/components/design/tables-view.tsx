@@ -7,12 +7,14 @@ import {
   GearIcon,
   PlusIcon,
   TableIcon,
-  TrashIcon,
 } from "@phosphor-icons/react"
 
+import { DeleteDataTableDialog } from "@/components/design/delete-data-table-dialog"
+import { ResourceRowActionsMenu } from "@/components/design/resource-row-actions-menu"
 import {
   createDataTableAction,
   deleteDataTableAction,
+  duplicateDataTableAction,
 } from "@/lib/actions/data-table-actions"
 import type { DataTable } from "@/lib/domain/data-table"
 import { Button } from "@amakai/shared/components/ui/button"
@@ -32,7 +34,6 @@ import {
   TableHeader,
   TableRow,
 } from "@amakai/shared/components/ui/table"
-import { DeleteDataTableDialog } from "@/components/design/delete-data-table-dialog"
 
 export interface TablesViewProps {
   tables: DataTable[]
@@ -53,6 +54,7 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
   const [tables, setTables] = React.useState(initialTables)
   const [isCreating, setIsCreating] = React.useState(false)
   const [deletingId, setDeletingId] = React.useState<string | null>(null)
+  const [duplicatingId, setDuplicatingId] = React.useState<string | null>(null)
   const [tableToDelete, setTableToDelete] = React.useState<DataTable | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -74,6 +76,22 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
     }
 
     router.push(`/design/tables/${result.table.id}`)
+  }
+
+  const handleDuplicate = async (table: DataTable) => {
+    setError(null)
+    setDuplicatingId(table.id)
+
+    const result = await duplicateDataTableAction(table.id)
+
+    setDuplicatingId(null)
+
+    if ("error" in result) {
+      setError(result.error)
+      return
+    }
+
+    setTables((current) => [result.table, ...current])
   }
 
   const handleDeleteConfirm = async () => {
@@ -151,7 +169,7 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
                 <TableHead>Columns</TableHead>
                 <TableHead>Rows</TableHead>
                 <TableHead>Last updated</TableHead>
-                <TableHead className="w-[240px] text-right">Actions</TableHead>
+                <TableHead className="w-[220px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -173,7 +191,7 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
                         }
                       >
                         <TableIcon data-icon="inline-start" />
-                        Edit
+                        Open
                       </Button>
                       <Button
                         variant="outline"
@@ -185,15 +203,12 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
                         <GearIcon data-icon="inline-start" />
                         Columns
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={deletingId === table.id}
-                        onClick={() => setTableToDelete(table)}
-                      >
-                        <TrashIcon data-icon="inline-start" />
-                        {deletingId === table.id ? "Deleting…" : "Delete"}
-                      </Button>
+                      <ResourceRowActionsMenu
+                        isDuplicating={duplicatingId === table.id}
+                        isDeleting={deletingId === table.id}
+                        onDuplicate={() => handleDuplicate(table)}
+                        onDelete={() => setTableToDelete(table)}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -205,7 +220,8 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
 
       {tables.length > 0 ? (
         <p className="text-xs text-muted-foreground">
-          Tip: set up columns first, then use Edit to fill in rows.
+          Tip: set up columns first, then use Open to fill in rows. Table names
+          must be unique.
         </p>
       ) : null}
 

@@ -35,7 +35,7 @@ import {
 } from "@amakai/shared/components/ui/sidebar"
 import { siteConfig } from "@amakai/shared/lib/site-config"
 import { cn } from "@amakai/shared/lib/utils"
-function NavLinkItem({
+function NavSectionLinkItem({
   item,
   pathname,
   search,
@@ -50,16 +50,23 @@ function NavLinkItem({
   const active = isNavItemActive(pathname, item.href, search)
 
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        isActive={active}
-        tooltip={item.title}
-        render={<Link href={item.href} />}
+    <SidebarGroup>
+      <SidebarGroupLabel
+        className={cn(
+          "hover:text-sidebar-accent-foreground",
+          active && "font-medium text-sidebar-accent-foreground"
+        )}
+        render={
+          <Link
+            href={item.href}
+            className="flex w-full items-center gap-2 outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+          />
+        }
       >
         <Icon />
-        <span>{item.title}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
+        <span className="flex-1 text-start">{item.title}</span>
+      </SidebarGroupLabel>
+    </SidebarGroup>
   )
 }
 
@@ -164,26 +171,16 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {portalNavigation.map((item) =>
-                item.href ? (
-                  <NavLinkItem
-                    key={item.title}
-                    item={item}
-                    pathname={pathname}
-                    search={search}
-                  />
-                ) : null
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
         {portalNavigation.map((item) =>
-          item.items ? (
+          item.items?.length ? (
             <NavGroupItem
+              key={item.title}
+              item={item}
+              pathname={pathname}
+              search={search}
+            />
+          ) : item.href ? (
+            <NavSectionLinkItem
               key={item.title}
               item={item}
               pathname={pathname}

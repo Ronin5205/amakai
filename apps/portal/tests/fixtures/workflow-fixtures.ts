@@ -34,6 +34,14 @@ export function dataTableNode(
     operation?: "read" | "write"
     tableName?: string
     columnMappings?: Array<{ columnKey: string; sourceField: string }>
+    enableFind?: boolean
+    findColumn?: string
+    findOperator?: string
+    findValue?: string
+    findValueField?: string
+    writeMode?: "insert" | "upsert"
+    matchColumn?: string
+    matchValueField?: string
   } = {}
 ): WorkflowNode {
   return workflowNode({
@@ -45,6 +53,14 @@ export function dataTableNode(
       operation: options.operation ?? "write",
       tableName: options.tableName ?? "demo_contacts",
       columnMappings: options.columnMappings ?? [],
+      enableFind: options.enableFind,
+      findColumn: options.findColumn,
+      findOperator: options.findOperator,
+      findValue: options.findValue,
+      findValueField: options.findValueField,
+      writeMode: options.writeMode,
+      matchColumn: options.matchColumn,
+      matchValueField: options.matchValueField,
     },
     position: { x: 240, y: 0 },
   })

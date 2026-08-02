@@ -625,6 +625,61 @@ export function TableSelectEditor({
   )
 }
 
+export function TableColumnSelectEditor({
+  id,
+  columns,
+  value,
+  onChange,
+}: {
+  id: string
+  columns: DataTableColumn[]
+  value: string
+  onChange: (value: string) => void
+}) {
+  const items = React.useMemo(
+    () => [
+      { label: "Select a column…", value: null },
+      ...columns.map((column) => ({
+        label: column.label,
+        value: column.key,
+      })),
+    ],
+    [columns]
+  )
+
+  if (columns.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Select a table with columns first.
+      </p>
+    )
+  }
+
+  return (
+    <Select
+      items={items}
+      value={value || null}
+      onValueChange={(next) => onChange(typeof next === "string" ? next : "")}
+    >
+      <SelectTrigger id={id} className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false} side="bottom">
+        <SelectGroup>
+          {items.map((item) => (
+            <SelectItem
+              key={item.value ?? "__placeholder__"}
+              value={item.value}
+            >
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
+}
+
 function TableColumnsPreview({ columns }: { columns: DataTableColumn[] }) {
   return (
     <div className="border bg-muted/20">

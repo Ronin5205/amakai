@@ -1,16 +1,20 @@
 import type {
-  Environment,
-  Release,
-  WorkflowVersion,
+  DeployWorkflowResult,
+  LiveWorkflow,
+  LiveWorkflowDetail,
 } from "@/lib/domain/deployment"
-import { type WorkflowRow } from "@/lib/data/workflow-mappers"
+import {
+  mapWorkflowRow,
+  type WorkflowGraphPayload,
+  type WorkflowRow,
+} from "@/lib/data/workflow-mappers"
 import { createClient } from "@/utils/supabase/server"
 
-const DEFAULT_ENVIRONMENTS = [
-  { name: "Development", kind: "development" as const, status: "active" as const },
-  { name: "Staging", kind: "staging" as const, status: "active" as const },
-  { name: "Production", kind: "production" as const, status: "inactive" as const },
-]
+const PRODUCTION_ENVIRONMENT = {
+  name: "Production",
+  kind: "production" as const,
+  status: "active" as const,
+}
 
 async function getAuthenticatedUserId() {
   const supabase = await createClient()
@@ -26,42 +30,50 @@ async function getAuthenticatedUserId() {
   return { supabase, userId: user.id }
 }
 
-export async function ensureDefaultEnvironments(userId: string) {
+async function ensureProductionEnvironment(userId: string) {
   const supabase = await createClient()
 
   const { data: existing } = await supabase
     .from("environments")
     .select("id")
     .eq("user_id", userId)
-    .limit(1)
+    .eq("kind", "production")
+    .maybeSingle()
 
-  if (existing && existing.length > 0) {
-    return
+  if (existing) {
+    return existing.id
   }
 
-  await supabase.from("environments").insert(
-    DEFAULT_ENVIRONMENTS.map((environment) => ({
+  const { data: created, error } = await supabase
+    .from("environments")
+    .insert({
       user_id: userId,
-      name: environment.name,
-      kind: environment.kind,
-      status: environment.status,
+      name: PRODUCTION_ENVIRONMENT.name,
+      kind: PRODUCTION_ENVIRONMENT.kind,
+      status: PRODUCTION_ENVIRONMENT.status,
       deployed_version: "—",
       health: "healthy",
       workflow_count: 0,
-    }))
-  )
+    })
+    .select("id")
+    .single()
+
+  if (error || !created) {
+    throw new Error(error?.message ?? "Failed to create production environment.")
+  }
+
+  return created.id
 }
 
 export async function deployWorkflowDraft(
-  workflowId: string,
-  environmentId: string
-): Promise<{ version: string; environment: string }> {
+  workflowId: string
+): Promise<DeployWorkflowResult> {
   const auth = await getAuthenticatedUserId()
   if (!auth) {
     throw new Error("Sign in to deploy workflows.")
   }
 
-  await ensureDefaultEnvironments(auth.userId)
+  const environmentId = await ensureProductionEnvironment(auth.userId)
 
   const { data: workflow, error: workflowError } = await auth.supabase
     .from("workflows")
@@ -74,54 +86,57 @@ export async function deployWorkflowDraft(
     throw new Error("Workflow not found.")
   }
 
-  const { data: environment, error: environmentError } = await auth.supabase
-    .from("environments")
-    .select("*")
-    .eq("id", environmentId)
-    .eq("user_id", auth.userId)
-    .single()
+  const graph = (workflow as WorkflowRow).graph
+  const deployedAt = new Date().toISOString()
 
-  if (environmentError || !environment) {
-    throw new Error("Environment not found.")
-  }
-
-  const { count } = await auth.supabase
+  await auth.supabase
     .from("workflow_versions")
-    .select("*", { count: "exact", head: true })
+    .delete()
     .eq("workflow_id", workflowId)
-
-  const versionNumber = (count ?? 0) + 1
-  const versionLabel = `v1.0.${versionNumber}`
+    .eq("user_id", auth.userId)
 
   const { data: versionRow, error: versionError } = await auth.supabase
     .from("workflow_versions")
     .insert({
       workflow_id: workflowId,
       user_id: auth.userId,
-      version: versionLabel,
-      graph: (workflow as WorkflowRow).graph,
+      version: "live",
+      graph,
+      created_at: deployedAt,
     })
     .select("*")
     .single()
 
   if (versionError || !versionRow) {
-    throw new Error(versionError?.message ?? "Failed to create workflow version.")
+    throw new Error(versionError?.message ?? "Failed to publish workflow.")
   }
+
+  await auth.supabase
+    .from("workflows")
+    .update({ status: "published", updated_at: deployedAt })
+    .eq("id", workflowId)
+    .eq("user_id", auth.userId)
+
+  const { count: liveWorkflowCount } = await auth.supabase
+    .from("workflows")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", auth.userId)
+    .eq("status", "published")
 
   const { error: environmentUpdateError } = await auth.supabase
     .from("environments")
     .update({
-      deployed_version: versionLabel,
+      deployed_version: "live",
       status: "active",
       health: "healthy",
-      workflow_count: 1,
+      workflow_count: liveWorkflowCount ?? 0,
     })
     .eq("id", environmentId)
     .eq("user_id", auth.userId)
 
   if (environmentUpdateError) {
     throw new Error(
-      environmentUpdateError.message ?? "Failed to update environment."
+      environmentUpdateError.message ?? "Failed to update production environment."
     )
   }
 
@@ -129,108 +144,148 @@ export async function deployWorkflowDraft(
     environment_id: environmentId,
     workflow_version_id: versionRow.id,
     user_id: auth.userId,
-    environment_name: environment.name,
-    version: versionLabel,
+    environment_name: PRODUCTION_ENVIRONMENT.name,
+    version: "live",
     status: "deployed",
+    deployed_at: deployedAt,
   })
 
   if (releaseError) {
-    throw new Error(releaseError.message ?? "Failed to record release.")
+    throw new Error(releaseError.message ?? "Failed to record deployment.")
   }
 
-  await auth.supabase
+  return { deployedAt }
+}
+
+export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
+  const auth = await getAuthenticatedUserId()
+  if (!auth) {
+    return []
+  }
+
+  const { data: workflows, error: workflowError } = await auth.supabase
     .from("workflows")
-    .update({ status: "published" })
-    .eq("id", workflowId)
+    .select("id, name, updated_at")
     .eq("user_id", auth.userId)
+    .eq("status", "published")
+    .order("updated_at", { ascending: false })
 
-  return {
-    version: versionLabel,
-    environment: environment.name,
-  }
-}
-
-export async function listEnvironments(): Promise<Environment[]> {
-  const auth = await getAuthenticatedUserId()
-  if (!auth) {
+  if (workflowError || !workflows || workflows.length === 0) {
     return []
   }
 
-  await ensureDefaultEnvironments(auth.userId)
+  const workflowIds = workflows.map((workflow) => workflow.id)
 
-  const { data, error } = await auth.supabase
-    .from("environments")
-    .select("*")
-    .eq("user_id", auth.userId)
-    .order("kind", { ascending: true })
-
-  if (error || !data) {
-    return []
-  }
-
-  return data.map((row) => ({
-    id: row.id,
-    name: row.name,
-    kind: row.kind,
-    status: row.status,
-    deployedVersion: row.deployed_version,
-    health: row.health,
-    workflowCount: row.workflow_count,
-  }))
-}
-
-export async function listVersions(): Promise<WorkflowVersion[]> {
-  const auth = await getAuthenticatedUserId()
-  if (!auth) {
-    return []
-  }
-
-  const { data, error } = await auth.supabase
+  const { data: versions } = await auth.supabase
     .from("workflow_versions")
-    .select("id, version, created_at, workflow_id, workflows(name)")
+    .select("workflow_id, created_at, graph")
     .eq("user_id", auth.userId)
-    .order("created_at", { ascending: false })
+    .in("workflow_id", workflowIds)
 
-  if (error || !data) {
-    return []
+  const deployedAtByWorkflowId = new Map<string, string>()
+  const versionGraphByWorkflowId = new Map<string, WorkflowGraphPayload>()
+  for (const version of versions ?? []) {
+    if (!deployedAtByWorkflowId.has(version.workflow_id)) {
+      deployedAtByWorkflowId.set(version.workflow_id, version.created_at)
+      versionGraphByWorkflowId.set(
+        version.workflow_id,
+        version.graph as WorkflowGraphPayload
+      )
+    }
   }
 
-  return data.map((row) => {
-    const workflow = row.workflows as { name?: string } | null
+  return workflows.map((workflow) => {
+    const versionGraph = versionGraphByWorkflowId.get(workflow.id)
+    const nodes = versionGraph?.nodes ?? []
+    const triggerNode = nodes.find((node) => node.kind === "trigger")
+    const triggerType =
+      typeof triggerNode?.config?.triggerType === "string"
+        ? triggerNode.config.triggerType
+        : undefined
 
     return {
-      id: row.id,
-      version: row.version,
-      workflowName: workflow?.name ?? "Workflow",
-      createdAt: row.created_at,
-      author: "You",
-      isCurrent: false,
+      id: workflow.id,
+      name: workflow.name,
+      deployedAt:
+        deployedAtByWorkflowId.get(workflow.id) ?? workflow.updated_at,
+      updatedAt: workflow.updated_at,
+      health: "healthy" as const,
+      nodeCount: nodes.length,
+      triggerType,
     }
   })
 }
 
-export async function listReleases(): Promise<Release[]> {
+async function getPublishedWorkflowGraph(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  workflowId: string
+): Promise<WorkflowGraphPayload | null> {
+  const { data: version } = await supabase
+    .from("workflow_versions")
+    .select("graph")
+    .eq("workflow_id", workflowId)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!version?.graph) {
+    return null
+  }
+
+  return version.graph as WorkflowGraphPayload
+}
+
+export async function getLiveWorkflow(
+  workflowId: string
+): Promise<LiveWorkflowDetail | null> {
   const auth = await getAuthenticatedUserId()
   if (!auth) {
-    return []
+    return null
   }
 
-  const { data, error } = await auth.supabase
-    .from("releases")
+  const { data: workflow, error } = await auth.supabase
+    .from("workflows")
     .select("*")
+    .eq("id", workflowId)
     .eq("user_id", auth.userId)
-    .order("deployed_at", { ascending: false })
+    .eq("status", "published")
+    .maybeSingle()
 
-  if (error || !data) {
-    return []
+  if (error || !workflow) {
+    return null
   }
 
-  return data.map((row) => ({
-    id: row.id,
-    environment: row.environment_name,
-    version: row.version,
-    status: row.status,
-    deployedAt: row.deployed_at,
-    deployedBy: "You",
-  }))
+  const graph =
+    (await getPublishedWorkflowGraph(auth.supabase, auth.userId, workflowId)) ??
+    ((workflow as WorkflowRow).graph as WorkflowGraphPayload)
+
+  const mapped = mapWorkflowRow(workflow as WorkflowRow)
+  const triggerNode = mapped.nodes.find((node) => node.kind === "trigger")
+  const triggerType =
+    typeof triggerNode?.config?.triggerType === "string"
+      ? triggerNode.config.triggerType
+      : undefined
+
+  const { data: version } = await auth.supabase
+    .from("workflow_versions")
+    .select("created_at")
+    .eq("workflow_id", workflowId)
+    .eq("user_id", auth.userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  return {
+    id: mapped.id,
+    name: mapped.name,
+    deployedAt: version?.created_at ?? mapped.updatedAt,
+    updatedAt: mapped.updatedAt,
+    health: "healthy",
+    nodeCount: mapped.nodes.length,
+    triggerType,
+    nodes: graph.nodes ?? mapped.nodes,
+    edges: graph.edges ?? mapped.edges ?? [],
+  }
 }

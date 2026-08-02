@@ -66,7 +66,7 @@ export function buildDefaultSwitchCases(caseCount: number, includeDefault: boole
   if (includeDefault) {
     cases.push({
       portId: "default",
-      label: "Default",
+      label: "Fallback",
       field: "",
       operator: "equals",
       compareValue: "",
@@ -101,7 +101,7 @@ export function validateSwitchCaseRules(node: {
   config: Record<string, unknown>
 }) {
   const caseCount = Math.max(2, Number(node.config.caseCount ?? 2))
-  const includeDefault = node.config.includeDefaultOutput !== false
+  const includeDefault = node.config.includeDefaultOutput === true
   const rules = normalizeSwitchCases(
     node.config.switchCases,
     caseCount,

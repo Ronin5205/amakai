@@ -39,19 +39,28 @@ export type LogEntry = {
   id: string
   timestamp: string
   level: LogLevel
+  workflowId: string
   workflowName: string
+  executionId: string
   message: string
+  title?: string
   component?: string
 }
 
-export type AlertSeverity = "critical" | "warning" | "info"
+export type LogFilter = "all" | LogLevel | "alerts"
 
-export type Alert = {
+export type ExecutionLogGroup = {
   id: string
-  severity: AlertSeverity
-  title: string
+  executionId: string
+  workflowId: string
+  workflowName: string
+  status: "running" | "queued" | "completed" | "failed" | "pending_approval"
+  trigger: string
+  startedAt: string
+  finishedAt?: string
+  durationMs?: number
+  logCount: number
+  level: LogLevel
   message: string
-  source: string
-  timestamp: string
-  acknowledged?: boolean
+  logs: LogEntry[]
 }

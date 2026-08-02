@@ -49,37 +49,48 @@ function readItemField(item: unknown, fieldName: string) {
 }
 
 export function mergeBranchPayloads(branchA: unknown, branchB: unknown) {
-  const left =
-    typeof branchA === "object" && branchA !== null
-      ? (branchA as Record<string, unknown>)
-      : { value: branchA }
-  const right =
-    typeof branchB === "object" && branchB !== null
-      ? (branchB as Record<string, unknown>)
-      : { value: branchB }
+  return mergeManyBranchPayloads([branchA, branchB])
+}
+
+export function mergeManyBranchPayloads(branches: unknown[]) {
+  const normalized = branches.map((branch, index) => {
+    if (typeof branch === "object" && branch !== null) {
+      return branch as Record<string, unknown>
+    }
+    return { value: branch, branchIndex: index + 1 }
+  })
 
   const merged: Record<string, unknown> = {
-    branchA: left,
-    branchB: right,
+    branches: normalized,
   }
 
-  for (const [key, value] of Object.entries(left)) {
-    if (!(key in merged)) {
-      merged[key] = value
-    }
+  // Keep legacy keys for 2-input merges used by existing tests/templates.
+  if (normalized[0]) {
+    merged.branchA = normalized[0]
+  }
+  if (normalized[1]) {
+    merged.branchB = normalized[1]
   }
 
-  for (const [key, value] of Object.entries(right)) {
-    if (key in merged && merged[key] !== value) {
-      merged[`branchB_${key}`] = value
-    } else if (!(key in merged)) {
-      merged[key] = value
+  for (let index = 0; index < normalized.length; index += 1) {
+    const branch = normalized[index]
+    const prefix = `branch${index + 1}`
+    merged[prefix] = branch
+
+    for (const [key, value] of Object.entries(branch)) {
+      if (!(key in merged)) {
+        merged[key] = value
+        continue
+      }
+      if (merged[key] !== value) {
+        merged[`${prefix}_${key}`] = value
+      }
     }
   }
 
   return mergePayload(merged, {
     mergedAt: new Date().toISOString(),
-    mergeSourceCount: 2,
+    mergeSourceCount: normalized.length,
   })
 }
 

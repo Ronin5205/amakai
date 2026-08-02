@@ -853,3 +853,27 @@ This evolution transforms the platform from a workflow builder into an intellige
 The AI Workflow Assembly Platform represents a next-generation approach to business automation by combining artificial intelligence with a structured library of reusable workflow components. Rather than relying on fully generated code, the platform assembles, configures, validates, and deploys automation pipelines using proven building blocks, significantly improving reliability, scalability, maintainability, and deployment speed.
 
 By integrating intelligent planning, automated configuration, comprehensive monitoring, advanced analytics, and continuous optimization, the platform provides organizations with a complete lifecycle solution for workflow automation. Its modular architecture ensures extensibility through reusable components and future enhancements such as multi-agent collaboration and autonomous learning, positioning the platform as an intelligent automation operating system capable of evolving alongside organizational needs.
+
+---
+
+# Appendix A — Portal implementation status
+
+This appendix tracks what the **client portal** (`apps/portal`) implements today relative to the requirements above. It is maintained alongside code; see [Portal_Guide.md](./Portal_Guide.md) for routes and file references.
+
+| Capability | Portal status |
+|------------|---------------|
+| Workflow design (graph editor) | Implemented — Supabase-backed drafts |
+| Pre-deploy validation | Implemented — in-process playground (`lib/engine/playground.ts`) |
+| Design-time testing | Implemented — `/design/testing` |
+| Deployment | Implemented — single production target from editor; no env/version UI |
+| Production execution | Implemented — `/production/runs`; shared playground engine |
+| Execution history | Implemented — `workflow_executions`; 20 runs retained per workflow |
+| Monitoring | Implemented — adaptive metrics from production runs per live workflow |
+| Logs and alerts | Implemented — grouped by execution; alerts via log filter + notification bell |
+| Data tables (design) | Implemented — Supabase-backed |
+| Resources, billing, community | UI stubs only |
+| Multi-tenant organizations | Not implemented — rows scoped by `user_id` |
+| Distributed workflow engine | Not implemented — SDLC §7–10 services are future work |
+| AI planning pipeline | Stub accessors only (`lib/data/planning.ts`) |
+
+**Documentation:** [Portal_Guide.md](./Portal_Guide.md) · [Workflow_Nodes_Reference.md](./Workflow_Nodes_Reference.md) · [apps/portal/lib/data/README.md](../apps/portal/lib/data/README.md)

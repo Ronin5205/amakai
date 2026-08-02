@@ -4,7 +4,6 @@ import { Suspense } from "react"
 
 import { DesignHubView } from "@/components/design/design-hub-view"
 import { parseDesignPanelParam } from "@/lib/design/design-hub-types"
-import { listEnvironments } from "@/lib/data/deployments"
 import { listDataTableSummaries } from "@/lib/data/data-tables"
 import { getWorkflowDraft } from "@/lib/data/workflows"
 import {
@@ -33,7 +32,6 @@ export default async function WorkflowEditorPage({
 
   const [
     workflow,
-    environments,
     analysis,
     planningStages,
     questions,
@@ -41,7 +39,6 @@ export default async function WorkflowEditorPage({
     dataTables,
   ] = await Promise.all([
     getWorkflowDraft(params.id),
-    listEnvironments(),
     getSampleAnalysis(),
     getPlanningStages(),
     getClarificationQuestions(),
@@ -59,7 +56,6 @@ export default async function WorkflowEditorPage({
         key={workflow.id}
         initialPanel={initialPanel}
         workflow={workflow}
-        environments={environments}
         analysis={analysis}
         planningStages={planningStages}
         questions={questions}

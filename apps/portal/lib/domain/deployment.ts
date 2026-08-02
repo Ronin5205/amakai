@@ -1,30 +1,20 @@
-export type EnvironmentKind = "development" | "staging" | "production"
+import type { WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 
-export type Environment = {
+export type LiveWorkflow = {
   id: string
   name: string
-  kind: EnvironmentKind
-  status: "active" | "inactive" | "deploying"
-  deployedVersion: string
-  health: "healthy" | "degraded" | "down"
-  workflowCount: number
-}
-
-export type WorkflowVersion = {
-  id: string
-  version: string
-  workflowName: string
-  createdAt: string
-  author: string
-  changelog?: string
-  isCurrent?: boolean
-}
-
-export type Release = {
-  id: string
-  environment: string
-  version: string
-  status: "deployed" | "rolling_back" | "failed" | "pending"
   deployedAt: string
-  deployedBy: string
+  updatedAt: string
+  health: "healthy" | "degraded" | "down"
+  nodeCount: number
+  triggerType?: string
+}
+
+export type LiveWorkflowDetail = LiveWorkflow & {
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
+}
+
+export type DeployWorkflowResult = {
+  deployedAt: string
 }

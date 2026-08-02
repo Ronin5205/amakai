@@ -4,6 +4,12 @@ import {
   resolvePayloadField as resolveJsonPayloadField,
 } from "@/lib/design/json-value"
 import {
+  coerceCompareValue,
+  isComparisonOperator,
+  matchesComparison,
+  type ComparisonOperator,
+} from "@/lib/design/comparison-rules"
+import {
   parseOutputFieldDefs,
   type OutputFieldType,
 } from "@/lib/design/output-fields"
@@ -235,6 +241,69 @@ export function mergePayload(
 
 export function getDataTableOperation(node: WorkflowNode) {
   return node.config.operation === "write" ? "write" : "read"
+}
+
+export function getDataTableWriteMode(node: WorkflowNode) {
+  return node.config.writeMode === "upsert" ? "upsert" : "insert"
+}
+
+export function isDataTableFindEnabled(node: WorkflowNode) {
+  return node.config.enableFind === true
+}
+
+export function resolveFindCompareValue(
+  payload: unknown,
+  findValue: unknown,
+  findValueField: unknown
+) {
+  const fieldRef = typeof findValueField === "string" ? findValueField.trim() : ""
+  if (fieldRef) {
+    const resolved = resolvePayloadField(payload, fieldRef)
+    if (resolved !== undefined) {
+      return resolved
+    }
+  }
+
+  if (typeof findValue === "string") {
+    return coerceCompareValue(findValue)
+  }
+
+  return undefined
+}
+
+export function filterDataTableRowsByColumn<T extends { data: Record<string, unknown> }>(
+  rows: T[],
+  columnKey: string,
+  operator: unknown,
+  compareValue: unknown
+): T[] {
+  const column = columnKey.trim()
+  if (!column || compareValue === undefined) {
+    return rows
+  }
+
+  const resolvedOperator: ComparisonOperator = isComparisonOperator(operator)
+    ? operator
+    : "equals"
+
+  return rows.filter((row) =>
+    matchesComparison(row.data[column], resolvedOperator, compareValue)
+  )
+}
+
+export function findDataTableRowByColumnValue(
+  rows: Array<{ id: string; data: Record<string, unknown> }>,
+  columnKey: string,
+  value: unknown
+) {
+  const column = columnKey.trim()
+  if (!column || value === undefined) {
+    return undefined
+  }
+
+  return rows.find((row) =>
+    matchesComparison(row.data[column], "equals", value)
+  )
 }
 
 export function getDataTableMappings(node: WorkflowNode) {

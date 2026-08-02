@@ -15,7 +15,7 @@ export function isComparisonOperator(value: unknown): value is ComparisonOperato
   return COMPARISON_OPERATORS.some((entry) => entry.value === value)
 }
 
-function coerceCompareValue(raw: string): unknown {
+export function coerceCompareValue(raw: string): unknown {
   const trimmed = raw.trim()
   if (trimmed === "") {
     return ""
@@ -43,7 +43,7 @@ function coerceCompareValue(raw: string): unknown {
   }
 }
 
-function compareValues(
+export function matchesComparison(
   left: unknown,
   operator: ComparisonOperator,
   right: unknown
@@ -108,7 +108,7 @@ export function evaluateComparisonRule(
   const actual = readJsonPath(payload, jsonPath)
   const expected = coerceCompareValue(compareValue)
 
-  return compareValues(actual, resolvedOperator, expected)
+  return matchesComparison(actual, resolvedOperator, expected)
 }
 
 export function formatComparisonSummary(

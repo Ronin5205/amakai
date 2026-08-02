@@ -1,8 +1,10 @@
 # Workflow Nodes Reference
 
-This document describes **every workflow node** currently available in the portal builder: ports, configuration, payload behavior, and how each node runs in **Testing**, **Validation**, and the **playground engine** (`apps/portal/lib/engine/playground.ts`).
+This document describes **every workflow node** currently available in the portal builder: ports, configuration, payload behavior, and how each node runs in **Testing**, **Validation**, **Production runs**, and the **playground engine** (`apps/portal/lib/engine/playground.ts`).
 
-For a compact port-only table, see [Workflow_Node_Port_Specification.md](./Workflow_Node_Port_Specification.md). That file is older and uses legacy names in places (e.g. “Merge” / “Aggregate”); this reference uses the current UI labels (**Combine Branches**, **Group Items**) and reflects current runtime behavior.
+For portal routes and the design → deploy → production → operate lifecycle, see [Portal_Guide.md](./Portal_Guide.md).
+
+For a compact port-only table aligned with n8n semantics, see [Workflow_Node_Port_Specification.md](./Workflow_Node_Port_Specification.md). This reference uses Amakai UI labels (**Combine Branches**, **Group Items**) where they differ from n8n names (**Merge**, **Aggregate**) and documents current playground runtime behavior.
 
 ---
 
@@ -31,7 +33,7 @@ Most single-input/single-output nodes use:
 
 **Edit Fields** uses dynamic paired ports: `input-1` … `input-N` and `output-1` … `output-N`. Connections on `main-in` / `main-out` are treated as the first pair.
 
-**Combine Branches** uses `input-a` and `input-b` (both required).
+**Combine Branches** (Merge) uses `input-1` … `input-N` (default **2**, configurable). Legacy edges may still use `input-a` / `input-b`, which map to `input-1` / `input-2`.
 
 Branch-style outputs (IF, Switch, Approval, Parallel) use port types `branch` in the schema; loop nodes use `loop` and `done`.
 
@@ -62,7 +64,7 @@ Some kinds share one engine path but differ by catalog ID (e.g. all `sequential`
 - Valid JSON → parsed value
 - Otherwise → plain string
 
-**Switch** evaluates cases **top to bottom**; the **first matching case wins**. If none match and **Include default output** is enabled, execution routes to the `default` port. If no case matches and there is no default, the run fails.
+**Switch** evaluates cases **top to bottom**; the **first matching case wins**. If none match and **Include fallback output** is enabled, execution routes to the `default` (Fallback) port. If no case matches and fallback is disabled, the run fails. Fallback is **off by default**.
 
 ---
 
@@ -72,14 +74,18 @@ Testing and Validation use the playground engine. Behavior below is what the eng
 
 | Area | Current playground behavior |
 |------|----------------------------|
-| **IF** | Validates field/operator/value, but **always routes to the `true` port** (comparison is not evaluated yet). |
-| **Filter** | Validates config, then **passes the full payload through** on `matching-items` (no item filtering yet). |
+| **IF** | Evaluates the comparison rule and routes to **`true`** or **`false`**. |
+| **Filter** | Evaluates the rule; matching payloads pass on **Kept** (`matching-items`); non-matching payloads are **dropped** (no downstream edges). |
+| **Loop Over Items** | Fans out **loop** paths per item; **done** fires **once** after all loop-body work units finish. |
+| **Combine Branches** | Waits for **all** configured inputs (default 2, up to N) before merging — a sync barrier. |
 | **Sort**, **Date & Time** | Validates required fields, then **pass-through stub** (no sort/format logic). |
 | **Code** | Validates non-empty code, adds `lastAction` to payload; **does not execute** JavaScript/Python. |
 | **Parallel `maxConcurrency`** | Config exists but **does not trim** branch ports; all connected branch outputs fire. |
 | **Exception (base kind)** | Pass-through on `recovered` if used; only **Stop and Error** is in the palette. |
 
 Pause/resume nodes (**Approval**, **Wait**) stop the run until the user approves/rejects or the wait timer completes in Testing/Validation.
+
+**Merge warning:** because Combine Branches waits for every connected input, it is a poor fit for rejoining mutually exclusive IF branches — prefer keeping exclusive paths separate or using Switch.
 
 ---
 
@@ -167,13 +173,21 @@ All action nodes are **kind** `sequential` unless noted. Standard port: `main-in
 |-------|------|-------------|
 | `operation` | `read` \| `write` | Default `read` |
 | `tableName` | table-select | Required table name |
+| `enableFind` | boolean | For read: filter rows instead of returning all rows |
+| `findColumn` | table-column-select | Column to compare when finding rows |
+| `findOperator` | select | `equals`, `not_equals`, `greater_than`, `less_than`, `contains` |
+| `findValue` | string | Static value to compare (optional if `findValueField` is set) |
+| `findValueField` | upstream-field | Upstream field to use as the find value |
+| `writeMode` | `insert` \| `upsert` | Default `insert` |
+| `matchColumn` | table-column-select | For upsert: column used to locate the existing row |
+| `matchValueField` | upstream-field | For upsert: upstream field whose value is matched |
 | `columnMappings` | table-column-map | For write: map table columns → upstream fields |
 
 #### Runtime behavior
 
 **Read**
 
-- Loads all rows from the table.
+- Loads all rows from the table, or only matching rows when **Find rows** is enabled.
 - Merges into payload:
 
 ```json
@@ -181,15 +195,19 @@ All action nodes are **kind** `sequential` unless noted. Standard port: `main-in
   "dataTableName": "Orders",
   "dataTableOperation": "read",
   "dataTableRows": [ { "...": "row data" } ],
-  "dataTableRowCount": 3
+  "dataTableRowCount": 3,
+  "dataTableFindEnabled": true,
+  "dataTableRow": { "...": "single match when exactly one row is found" }
 }
 ```
 
+When find is enabled, `dataTableRow` is added only when exactly one row matches.
+
 **Write**
 
-- Builds one row from column mappings via `resolvePayloadField`.
-- Writes via playground server action.
-- Adds: `dataTableName`, `dataTableOperation: "write"`, `dataTableRow` (written row).
+- **Insert** (default): appends one new row from column mappings.
+- **Upsert**: finds an existing row where `matchColumn` equals the resolved `matchValueField`, updates mapped columns on that row, or inserts if no match exists.
+- Adds: `dataTableName`, `dataTableOperation: "write"`, `dataTableWriteMode`, `dataTableRowUpdated`, `dataTableRow`.
 
 Fails if table name is missing or the server action returns an error.
 
@@ -252,28 +270,34 @@ Example: mapping `amount` → `total` with source `trigger-1.amount`:
 
 ### Combine Branches (`action.merge`)
 
-**Purpose:** Synchronize two paths (e.g. after **Parallel** or **IF** true/false) and merge their payloads into one.
+**Purpose:** Synchronize multiple paths (e.g. after **Parallel**) and merge their payloads into one. n8n name: **Merge**.
 
 #### Ports
 
 | Inputs | Output |
 |--------|--------|
-| `input-a` (required), `input-b` (required) | `main-out` |
+| `input-1` … `input-N` (default **2**, configurable via `inputCount`) | `main-out` (**Output**) |
+
+Legacy edge ports `input-a` / `input-b` map to `input-1` / `input-2`.
 
 #### Configuration
 
-None.
+| Field | Type | Description |
+|-------|------|-------------|
+| `inputCount` | number | Number of input ports (min 2, max 8). Default `2`. |
 
 #### Runtime behavior
 
-1. **Buffering:** The engine waits until **both** inputs have arrived (`merge-buffer.ts`).
-2. When ready, merges with `mergeBranchPayloads`:
-   - Top-level keys from both branches are combined.
-   - Colliding keys with different values: branch B’s value is stored as `branchB_<key>`.
-   - Always adds: `branchA`, `branchB` (full branch payloads), `mergedAt`, `mergeSourceCount: 2`.
-3. Graph validation fails if either input port is unconnected.
+1. **Buffering:** The engine waits until **all** configured inputs have arrived (`merge-buffer.ts`).
+2. When ready, folds payloads with `mergeBranchPayloads` / `mergeManyBranchPayloads`:
+   - Top-level keys from all branches are combined.
+   - Colliding keys with different values: later branch values are stored as `branchN_<key>`.
+   - Always adds: `branches` (array of branch payloads), `mergedAt`, `mergeSourceCount`.
+3. Graph validation fails if any required input port is unconnected.
 
-While waiting, the run logs which branch arrived and that it is waiting for the other.
+**Caveat:** Merge is a sync barrier — it pulls data from every connected input. Do not use it to rejoin mutually exclusive IF true/false paths.
+
+While waiting, the run logs which input arrived and that it is waiting for the remaining inputs.
 
 ---
 
@@ -404,50 +428,50 @@ All condition nodes are **kind** `conditional`.
 #### Runtime behavior
 
 - Validates field and compare value.
-- **Playground limitation:** always exits on **`true`** regardless of the rule. Switch should be used when you need evaluated branching in Testing today.
+- Evaluates with `evaluateComparisonRule` and routes to **`true`** or **`false`**.
 
 ---
 
 ### Switch (`condition.switch`)
 
-**Purpose:** Route to the first matching case, or **Default**.
+**Purpose:** Route to the first matching case, or optional **Fallback**.
 
 #### Ports (dynamic)
 
 | Input | Outputs |
 |-------|---------|
-| `main-in` | `case-1` … `case-N`, optionally `default` |
+| `main-in` | `case-1` … `case-N`, optionally `default` (Fallback) |
 
-Controlled by `caseCount` (minimum 2) and `includeDefaultOutput` (default `true`).
+Controlled by `caseCount` (minimum 2) and `includeDefaultOutput` (default **`false`**).
 
 #### Configuration
 
 | Field | Type |
 |-------|------|
 | `caseCount` | number |
-| `includeDefaultOutput` | boolean |
+| `includeDefaultOutput` | boolean — when true, adds Fallback port |
 | `switchCases` | switch-rules table |
 
-Each non-default case requires: `field`, `operator`, `compareValue`. The **Default** case has no rule.
+Each non-fallback case requires: `field`, `operator`, `compareValue`. The **Fallback** case has no rule.
 
 #### Runtime behavior
 
-1. Validates all non-default cases.
+1. Validates all non-fallback cases.
 2. Evaluates cases in order with `evaluateComparisonRule`.
-3. Emits on the first matching port, or `default` if enabled and nothing matched.
-4. Fails if no match and default is disabled.
+3. Emits on the first matching port, or `default` if fallback is enabled and nothing matched.
+4. Fails if no match and fallback is disabled.
 
 ---
 
 ### Filter (`condition.filter`)
 
-**Purpose:** Emit only items that satisfy a condition.
+**Purpose:** Emit only payloads that satisfy a condition; drop the rest.
 
 #### Ports
 
 | Input | Output |
 |-------|--------|
-| `main-in` | `matching-items` |
+| `main-in` | `matching-items` (label **Kept**) |
 
 #### Configuration
 
@@ -456,7 +480,9 @@ Same single-rule shape as IF: `field`, `operator`, `compareValue`.
 #### Runtime behavior
 
 - Validates config.
-- **Playground limitation:** pass-through on `matching-items` without filtering.
+- Evaluates the rule against the current payload.
+- **Match:** pass through on `matching-items`.
+- **No match:** drop — no downstream edges are enqueued.
 
 ---
 
@@ -468,7 +494,7 @@ All loop nodes are **kind** `loop`.
 
 ### Loop Over Items (`loop.over-items`)
 
-**Purpose:** Iterate over a collection; fire **Loop** once per item, then **Done** when finished.
+**Purpose:** Iterate over a collection; fire **Loop** once per item, then **Done** once when every loop-body path has finished.
 
 #### Ports
 
@@ -517,7 +543,8 @@ The field value is normalized via `normalizeCollection`:
 }
 ```
 
-- After all iterations, enqueues **`done`** with:
+- Tracks pending loop-body work units (`loop-completion.ts`). **Done is not enqueued yet.**
+- When every loop-body path finishes (no further downstream edges), enqueues **`done` once** with:
 
 ```json
 {
@@ -527,7 +554,7 @@ The field value is normalized via `normalizeCollection`:
 }
 ```
 
-Both **loop** and **done** paths run in the same validation pass (done is scheduled after loop fan-out).
+**Done fires exactly once after the final batch**, not per iteration.
 
 ---
 
@@ -647,7 +674,7 @@ Trigger → Parallel → [Branch A chain]
               → Combine Branches → ...
 ```
 
-Combine Branches blocks until both `input-a` and `input-b` have received a payload.
+Combine Branches blocks until all configured inputs (`input-1` … `input-N`) have received a payload.
 
 ### Loop → Group Items
 
@@ -664,7 +691,7 @@ Each switch case connects to its own branch (see **demo-switch-lab** template). 
 
 ### IF → Approval
 
-Use IF **true** branch for the happy path (bearing in mind IF always takes true in playground today). Approval pauses until manual decision.
+Use IF **true** / **false** branches for mutually exclusive paths (IF evaluates the rule in the playground). Approval pauses until manual decision.
 
 ---
 
@@ -675,7 +702,7 @@ The playground rejects runs when:
 - No trigger node exists  
 - Any node is unreachable from a trigger  
 - A required input port has no incoming edge  
-- **Combine Branches** is missing `input-a` or `input-b`  
+- **Combine Branches** is missing any required `input-1` … `input-N` connection  
 - **Trigger** has no output fields (`trigger.workflow`)  
 - Required config is missing (empty code, table name, comparison values, etc.)
 
@@ -688,7 +715,7 @@ Maximum **200 steps** per run (`MAX_PLAYGROUND_STEPS`) to prevent infinite loops
 1. **Trigger arrays:** use comma-separated values (`order-1, order-2`) unless you intentionally pass JSON.
 2. **Inspect payloads:** enable payload capture in Testing; the inspector shows runtime JSON per step.
 3. **Paused runs:** Approval and Wait require user action or timer completion before continuing.
-4. **Switch vs IF:** use **Switch** when you need real conditional routing in Testing; **IF** validates but does not branch on the rule yet.
+4. **IF / Switch / Filter** all evaluate comparison rules in Testing and Validation.
 5. **Edit Fields fan-out:** connect each `output-N` to different downstream nodes when you need per-field paths.
 
 ---
@@ -704,6 +731,7 @@ Maximum **200 steps** per run (`MAX_PLAYGROUND_STEPS`) to prevent infinite loops
 | Comparison operators | `apps/portal/lib/design/comparison-rules.ts` |
 | Playground engine | `apps/portal/lib/engine/playground.ts` |
 | Merge buffering | `apps/portal/lib/engine/merge-buffer.ts` |
+| Loop completion | `apps/portal/lib/engine/loop-completion.ts` |
 | Group Items transform | `apps/portal/lib/engine/payload-transforms.ts` |
 | Loop collection parsing | `apps/portal/lib/engine/loop-collection.ts` |
 | JSON / array parsing | `apps/portal/lib/design/json-value.ts` |
