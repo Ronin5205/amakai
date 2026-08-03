@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
+import { deleteAllSecrets } from "@/lib/data/secrets"
 import {
   deleteAllDataTables,
   deleteAllUserData,
@@ -19,6 +20,7 @@ function revalidateUserContentPaths() {
   revalidatePath("/operate/live-workflows")
   revalidatePath("/production/runs")
   revalidatePath("/production/history")
+  revalidatePath("/resources/secrets")
 }
 
 export type SettingsActionResult =
@@ -34,6 +36,19 @@ export async function deleteAllWorkflowsAction(): Promise<SettingsActionResult> 
     return {
       error:
         error instanceof Error ? error.message : "Failed to delete workflows.",
+    }
+  }
+}
+
+export async function deleteAllSecretsAction(): Promise<SettingsActionResult> {
+  try {
+    const deletedCount = await deleteAllSecrets()
+    revalidateUserContentPaths()
+    return { success: true, deletedCount }
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Failed to delete secrets.",
     }
   }
 }

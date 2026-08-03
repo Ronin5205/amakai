@@ -35,7 +35,20 @@ export default async function LiveWorkflowLayout({
           Deployed {formatDateTime(workflow.deployedAt)} · {workflow.nodeCount}{" "}
           nodes
           {workflow.triggerType ? ` · ${workflow.triggerType} trigger` : ""}
+          {workflow.subscriptionStatus
+            ? ` · subscription ${workflow.subscriptionStatus}`
+            : ""}
         </p>
+        {workflow.webhookUrl ? (
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Webhook URL
+            </p>
+            <code className="mt-1 block break-all text-xs">
+              {workflow.webhookUrl}
+            </code>
+          </div>
+        ) : null}
       </div>
 
       <LiveWorkflowOperateTabs workflowId={workflow.id} />

@@ -3,6 +3,7 @@ import type { ProductionRun, ProductionRunSummary } from "@/lib/domain/productio
 import type { ExecutionStatus } from "@/lib/domain/execution"
 import { runPlaygroundValidation } from "@/lib/engine/playground"
 import type { PlaygroundRunResult } from "@/lib/engine/types"
+import { executeIntegrationNodeProduction } from "@/lib/integrations/registry/server-runtime"
 import {
   extractTriggerInput,
   parseStoredProductionRunResult,
@@ -302,9 +303,13 @@ export async function startProductionRun(
 
   const triggerNode = workflow.nodes.find((node) => node.kind === "trigger")
   const triggerType =
-    typeof triggerNode?.config?.triggerType === "string"
-      ? triggerNode.config.triggerType
-      : "manual"
+    typeof triggerNode?.config?.triggerMode === "string"
+      ? triggerNode.config.triggerMode
+      : typeof triggerNode?.config?.triggerType === "string"
+        ? triggerNode.config.triggerType
+        : typeof triggerNode?.config?.operation === "string"
+          ? String(triggerNode.config.operation)
+          : "manual"
 
   const triggerPayloads = options?.triggerPayloads
 
@@ -336,6 +341,8 @@ export async function startProductionRun(
     {
       triggerPayloads,
       capturePayloads: true,
+      executionMode: "production",
+      integrationExecutor: executeIntegrationNodeProduction,
     }
   )
 

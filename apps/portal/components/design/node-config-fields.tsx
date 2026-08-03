@@ -12,12 +12,18 @@ import {
   TableSelectEditor,
   UpstreamFieldSelect,
 } from "@/components/design/node-config-custom-fields"
+import {
+  IntegrationConfigCascade,
+  SecretSelectEditor,
+} from "@/components/design/integration-config-field"
 import type { ConfigSchemaField, WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 import {
   buildDefaultColumnMappings,
   findDataTableSummary,
   type DataTableSummary,
 } from "@/lib/domain/data-table"
+import type { SecretKind, SecretSummary } from "@/lib/domain/secret"
+import { isSecretKind } from "@/lib/domain/secret"
 import {
   asEditRows,
   asRenameRows,
@@ -37,6 +43,23 @@ import {
   serializeOutputFieldDefs,
   type OutputFieldDef,
 } from "@/lib/design/output-fields"
+import {
+  clampNodeConfigNumber,
+  clampNodeConfigString,
+} from "@/lib/validation/workflow-node-config"
+import {
+  CODE_MAX_LENGTH,
+  COMPARE_VALUE_MAX_LENGTH,
+  ERROR_MESSAGE_MAX_LENGTH,
+  APPROVER_EMAIL_MAX_LENGTH,
+  APPROVER_ROLE_MAX_LENGTH,
+  MERGE_INPUT_MAX,
+  MERGE_INPUT_MIN,
+  SWITCH_CASE_MAX,
+  SWITCH_CASE_MIN,
+  WAIT_DURATION_MS_MAX,
+  WAIT_DURATION_MS_MIN,
+} from "@/lib/validation/limits"
 import { Input } from "@amakai/shared/components/ui/input"
 import {
   Field,
@@ -62,6 +85,7 @@ export interface NodeConfigFieldsProps {
   values: Record<string, unknown>
   idPrefix: string
   dataTables?: DataTableSummary[]
+  secrets?: SecretSummary[]
   onChange: (key: string, value: unknown) => void
 }
 
@@ -133,6 +157,8 @@ function ConfigField({
   edges,
   values,
   dataTables,
+  secrets,
+  onFieldChange,
   onChange,
 }: {
   field: ConfigSchemaField
@@ -143,6 +169,8 @@ function ConfigField({
   edges: WorkflowEdge[]
   values: Record<string, unknown>
   dataTables?: DataTableSummary[]
+  secrets?: SecretSummary[]
+  onFieldChange: (key: string, value: unknown) => void
   onChange: (value: unknown) => void
 }) {
   const upstreamOptions = React.useMemo(
@@ -151,6 +179,30 @@ function ConfigField({
   )
 
   switch (field.type) {
+    case "integration-config":
+      return (
+        <IntegrationConfigCascade
+          idPrefix={id}
+          nodeKind={node.kind}
+          values={values}
+          onChange={onFieldChange}
+        />
+      )
+
+    case "secret-select": {
+      const kinds = (field.secretKinds ?? [])
+        .filter((kind): kind is SecretKind => isSecretKind(kind))
+      return (
+        <SecretSelectEditor
+          id={id}
+          value={typeof value === "string" ? value : ""}
+          secrets={secrets ?? []}
+          secretKinds={kinds.length > 0 ? kinds : undefined}
+          onChange={onChange}
+        />
+      )
+    }
+
     case "output-fields":
       return (
         <OutputFieldsEditor
@@ -259,18 +311,40 @@ function ConfigField({
         </Toggle>
       )
 
-    case "number":
+    case "number": {
+      const numberLimits: Record<
+        string,
+        { min: number; max: number } | undefined
+      > = {
+        fieldCount: { min: 1, max: MAX_EDIT_FIELD_COUNT },
+        inputCount: { min: MERGE_INPUT_MIN, max: MERGE_INPUT_MAX },
+        caseCount: { min: SWITCH_CASE_MIN, max: SWITCH_CASE_MAX },
+        durationMs: { min: WAIT_DURATION_MS_MIN, max: WAIT_DURATION_MS_MAX },
+      }
+      const limits = numberLimits[field.key]
+
       return (
         <Input
           id={id}
           type="number"
+          min={limits?.min}
+          max={limits?.max}
           value={value === undefined || value === null ? "" : String(value)}
           onChange={(event) => {
             const next = event.target.value
-            onChange(next === "" ? undefined : Number(next))
+            if (next === "") {
+              onChange(undefined)
+              return
+            }
+            const parsed = Number(next)
+            if (!Number.isFinite(parsed)) {
+              return
+            }
+            onChange(clampNodeConfigNumber(field.key, parsed))
           }}
         />
       )
+    }
 
     case "select":
       return (
@@ -286,7 +360,14 @@ function ConfigField({
       return null
 
     case "textarea":
-    case "code":
+    case "code": {
+      const maxLength =
+        field.key === "code"
+          ? CODE_MAX_LENGTH
+          : field.key === "errorMessage"
+            ? ERROR_MESSAGE_MAX_LENGTH
+            : undefined
+
       return (
         <Textarea
           id={id}
@@ -300,11 +381,25 @@ function ConfigField({
           placeholder={field.placeholder}
           className={field.type === "code" ? "font-mono" : undefined}
           rows={field.type === "code" ? 5 : 3}
-          onChange={(event) => onChange(event.target.value || undefined)}
+          maxLength={maxLength}
+          onChange={(event) => {
+            const next = clampNodeConfigString(field.key, event.target.value)
+            onChange(next || undefined)
+          }}
         />
       )
+    }
 
-    default:
+    default: {
+      const maxLength =
+        field.key === "compareValue" || field.key === "findValue"
+          ? COMPARE_VALUE_MAX_LENGTH
+          : field.key === "approverEmail"
+            ? APPROVER_EMAIL_MAX_LENGTH
+            : field.key === "approverRole"
+              ? APPROVER_ROLE_MAX_LENGTH
+              : undefined
+
       return (
         <Input
           id={id}
@@ -316,9 +411,14 @@ function ConfigField({
                 : String(value)
           }
           placeholder={field.placeholder}
-          onChange={(event) => onChange(event.target.value || undefined)}
+          maxLength={maxLength}
+          onChange={(event) => {
+            const next = clampNodeConfigString(field.key, event.target.value)
+            onChange(next || undefined)
+          }}
         />
       )
+    }
   }
 }
 
@@ -330,6 +430,7 @@ export function NodeConfigFields({
   values,
   idPrefix,
   dataTables,
+  secrets,
   onChange,
 }: NodeConfigFieldsProps) {
   const visibleFields = fields.filter((field) => {
@@ -381,6 +482,19 @@ export function NodeConfigFields({
     if (
       field.key === "fieldCount" &&
       fields.some((entry) => entry.type === "field-edit-table")
+    ) {
+      return false
+    }
+    if (
+      field.key === "secretName" &&
+      values.authMode !== undefined &&
+      values.authMode !== "secret"
+    ) {
+      return false
+    }
+    if (
+      (field.key === "publicApiKey" || field.key === "publicCredentials") &&
+      values.authMode !== "public"
     ) {
       return false
     }
@@ -480,6 +594,8 @@ export function NodeConfigFields({
               edges={edges}
               values={values}
               dataTables={dataTables}
+              secrets={secrets}
+              onFieldChange={onChange}
               onChange={(next) => handleChange(field, next)}
             />
             {field.description ? (

@@ -10,7 +10,7 @@ Operational reference for the Amakai client portal (`apps/portal`). For product 
 | **Production** | `/production/runs`, `/production/history` | Execute deployed workflows; view run history |
 | **Design** | `/design/workflows`, `/design/workflow-editor`, `/design/tables`, `/design/testing` | Author workflows and tables; test drafts in playground |
 | **Operate** | `/operate/live-workflows`, `/operate/logs` | Monitor live workflows; grouped execution logs |
-| **Resources** | `/resources/*` | Components, integrations, AI models, secrets (mostly stub UI) |
+| **Resources** | `/resources/secrets` | Encrypted secrets vault + Connect Gmail / Outlook OAuth |
 | **Community** | `/community` | Stub |
 | **Administration** | `/admin/billing`, `/settings` | Stub |
 
@@ -39,17 +39,53 @@ flowchart LR
 - **Drafts** live in Supabase `workflows` (status `draft`).
 - **Testing** (`/design/testing`) runs the in-process playground against draft graphs with manual trigger payloads and approval/wait simulation.
 - **Validate** in the editor runs the same playground engine before deploy.
+- **Auto-save** validates names and field lengths via Zod (`lib/validation/`). Incomplete integration nodes are allowed on drafts; stricter checks apply at playground run time.
+
+### Input validation
+
+Shared limits live in `lib/validation/limits.ts` (Zod schemas in `lib/validation/*`):
+
+| Area | Limit |
+|------|--------|
+| Workflow / table / secret names | 30 characters; letters, numbers, spaces, `. - _ ( ) &` |
+| Table columns | Up to 50; keys are snake_case |
+| Trigger output field names | Up to 20 fields, 64 chars each (identifier pattern) |
+| Node config strings | Per-field caps (code, compare values, emails, etc.) |
+
+OAuth connect auto-names secrets from the mailbox local part (e.g. `Gmail abdullahrazi60`); the full address is stored in secret metadata.
+
+### Triggers: testing vs live
+
+| Trigger | Testing / Validate | Live (after deploy) |
+|---------|-------------------|---------------------|
+| **Trigger** (`trigger.workflow`) | Simulated — enter payload or use samples | Manual only via **Production → Runs** |
+| **API Trigger** (`trigger.api`) | Simulated — same as above | **Webhook:** `POST /api/webhooks/{token}` auto-starts runs (URL in Operate). **Schedule / signal:** UI only — not auto-fired yet |
+| **External Tool Trigger** (email receive) | Simulated sample email | Inbound Gmail/Outlook push auto-starts runs |
+
+Use **API Trigger** (not generic Trigger) for real inbound HTTP webhooks.
 
 ### Deploy
 
 - Single production target — no environment picker or version UI.
 - Deploy from the workflow editor; overwrites the live graph (`workflow_versions.version = 'live'`).
 - Published workflows appear under **Operate → Live Workflows** and on the dashboard.
+- Deploy also registers **trigger subscriptions** (webhook tokens, Gmail watch / Outlook Graph subscriptions when configured).
+
+### Integrations setup
+
+1. Apply migration `20260803190000_secrets_and_triggers.sql`.
+2. Set `SECRETS_ENCRYPTION_KEY` (or `SUPABASE_SECRET_KEY`) and OAuth client env vars — see `apps/portal/.env.example` (optional unless using Gmail/Outlook connect).
+3. Connect Gmail / Outlook under **Resources → Secrets** (each user connects their own mailbox; env vars are app credentials only).
+4. Add **External Tool Trigger / External Tool / API Trigger / HTTP Request** nodes from the Integrations palette.
+5. Deploy; copy the webhook URL from Operate for **API Trigger** workflows.
+6. For Gmail receive, configure Pub/Sub push to `/api/integrations/gmail/push` and set `GMAIL_PUBSUB_TOPIC`.
+7. Optional queue worker: `POST /api/internal/process-queue` (protect with `CRON_SECRET`).
 
 ### Production runs
 
 - **Production → Runs**: select a live workflow, enter trigger field values (or custom JSON), run in production.
 - Each run creates a row in `workflow_executions` with status, duration, trigger input, and step logs in `result` JSON.
+- Inbound webhooks/email enqueue runs (`queued` → `running`) via `lib/data/inbound-runs.ts`.
 - **Retention**: only the **20 most recent runs per workflow** are kept; older rows are deleted automatically.
 
 ### Operate
@@ -87,6 +123,11 @@ Production and testing share `lib/engine/playground.ts`:
 | Logs + insights | `lib/data/logs.ts`, `lib/operate/production-execution-insights.ts` |
 | Monitoring profile | `lib/operate/workflow-monitoring-profile.ts` |
 | Deploy / live list | `lib/data/deployments.ts` |
+| Secrets | `lib/data/secrets.ts`, `lib/actions/secret-actions.ts` |
+| Integration registry | `lib/integrations/registry/` |
+| Email adapters | `lib/integrations/email/adapters.ts` |
+| Inbound runs / webhooks | `lib/data/inbound-runs.ts`, `app/api/webhooks/[token]/route.ts` |
+| Input validation (Zod) | `lib/validation/` |
 | Editor | `components/design/design-hub-view.tsx` |
 | Views | `components/views/*` |
 

@@ -1,10 +1,11 @@
 import { cloneWorkflowGraph } from "@/lib/design/workflow-graph"
+import { normalizeValidatedResourceName } from "@/lib/validation/resource-names"
 import { createClient } from "@/utils/supabase/server"
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>
 
 function normalizeWorkflowName(name: string) {
-  return name.trim() || "Untitled workflow"
+  return normalizeValidatedResourceName(name, "Untitled workflow")
 }
 
 export async function assertUniqueWorkflowName(

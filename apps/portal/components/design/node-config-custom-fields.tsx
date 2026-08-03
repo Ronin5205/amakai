@@ -11,6 +11,11 @@ import {
   MAX_EDIT_FIELD_COUNT,
   normalizeFieldEditRows,
 } from "@/lib/design/edit-fields"
+import {
+  OUTPUT_FIELD_MAX_COUNT,
+  OUTPUT_FIELD_NAME_MAX_LENGTH,
+} from "@/lib/validation/limits"
+import { clampOutputFieldName } from "@/lib/validation/workflow-node-config"
 import type {
   FieldEditRow,
   FieldRenameRow,
@@ -105,7 +110,9 @@ export function OutputFieldsEditor({
   const updateRowName = (index: number, nextValue: string) => {
     onChange(
       rows.map((row, rowIndex) =>
-        rowIndex === index ? { ...row, name: nextValue } : row
+        rowIndex === index
+          ? { ...row, name: clampOutputFieldName(nextValue) }
+          : row
       )
     )
   }
@@ -119,6 +126,9 @@ export function OutputFieldsEditor({
   }
 
   const addRow = () => {
+    if (rows.length >= OUTPUT_FIELD_MAX_COUNT) {
+      return
+    }
     onChange([...rows, { name: "", type: "string" }])
   }
 
@@ -144,7 +154,8 @@ export function OutputFieldsEditor({
                 <Input
                   id={`${idPrefix}-output-${index}`}
                   value={row.name}
-                  placeholder="field name"
+                  placeholder="field_name"
+                  maxLength={OUTPUT_FIELD_NAME_MAX_LENGTH}
                   onChange={(event) => updateRowName(index, event.target.value)}
                 />
               </TableCell>
@@ -195,7 +206,13 @@ export function OutputFieldsEditor({
           ))}
         </TableBody>
       </Table>
-      <Button type="button" variant="outline" size="sm" onClick={addRow}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={addRow}
+        disabled={rows.length >= OUTPUT_FIELD_MAX_COUNT}
+      >
         <PlusIcon data-icon="inline-start" />
         Add field
       </Button>

@@ -247,6 +247,61 @@ export const COMPONENT_VARIANTS: ComponentCatalogItem[] = [
     description: "Immediately terminates workflow execution.",
     categoryId: "exception",
   },
+  {
+    id: "trigger.external-tool",
+    kind: "trigger",
+    label: "External Tool Trigger",
+    description:
+      "Start a workflow from an external service (e.g. receive Gmail or Outlook email).",
+    categoryId: "integrations",
+    defaultConfig: {
+      service: "email",
+      provider: "gmail",
+      operation: "receive",
+      authMode: "secret",
+    },
+  },
+  {
+    id: "integrations.external-tool",
+    kind: "sequential",
+    label: "External Tool",
+    description:
+      "Call an external service (e.g. send Gmail or Outlook email, emit webhooks).",
+    categoryId: "integrations",
+    defaultConfig: {
+      service: "email",
+      provider: "gmail",
+      operation: "send",
+      authMode: "secret",
+    },
+  },
+  {
+    id: "trigger.api",
+    kind: "trigger",
+    label: "API Trigger",
+    description:
+      "Start a workflow from a webhook URL, schedule, manual run, or signal.",
+    categoryId: "integrations",
+    defaultConfig: {
+      triggerMode: "webhook",
+      authMode: "none",
+    },
+  },
+  {
+    id: "integrations.http-request",
+    kind: "sequential",
+    label: "HTTP Request",
+    description: "Call an external REST API with method, URL, headers, and body.",
+    categoryId: "integrations",
+    defaultConfig: {
+      service: "api",
+      provider: "rest",
+      operation: "request",
+      method: "GET",
+      authMode: "secret",
+      timeoutMs: 15000,
+    },
+  },
 ]
 
 export const COMPONENT_CATALOG: ComponentCatalogItem[] = [

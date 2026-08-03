@@ -161,6 +161,43 @@ export async function deployWorkflowDraft(
     throw new Error(releaseError.message ?? "Failed to record deployment.")
   }
 
+  // Ensure API trigger tokens exist, then register inbound subscriptions
+  const graphPayload = graph as WorkflowGraphPayload
+  const nodes = (graphPayload.nodes ?? []).map((node) => {
+    if (
+      node.kind === "trigger" &&
+      (node.config?.catalogItemId === "trigger.api" ||
+        node.config?.componentVariant === "trigger.api") &&
+      (!node.config.webhookToken ||
+        String(node.config.webhookToken).trim() === "")
+    ) {
+      return {
+        ...node,
+        config: {
+          ...node.config,
+          webhookToken: crypto.randomUUID(),
+        },
+      }
+    }
+    return node
+  })
+
+  if (JSON.stringify(nodes) !== JSON.stringify(graphPayload.nodes ?? [])) {
+    await auth.supabase
+      .from("workflow_versions")
+      .update({ graph: { ...graphPayload, nodes } })
+      .eq("id", versionRow.id)
+      .eq("user_id", auth.userId)
+  }
+
+  const { syncTriggerSubscriptions } = await import(
+    "@/lib/data/trigger-subscriptions"
+  )
+  await syncTriggerSubscriptions({
+    workflowId,
+    nodes,
+  })
+
   return { deployedAt }
 }
 
@@ -202,6 +239,25 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
     }
   }
 
+  const { data: subscriptions } = await auth.supabase
+    .from("workflow_trigger_subscriptions")
+    .select("workflow_id, webhook_token, status, provider, operation")
+    .eq("user_id", auth.userId)
+    .in("workflow_id", workflowIds)
+
+  const subscriptionByWorkflow = new Map<
+    string,
+    { webhook_token: string | null; status: string; provider: string; operation: string }
+  >()
+  for (const row of subscriptions ?? []) {
+    if (!subscriptionByWorkflow.has(row.workflow_id)) {
+      subscriptionByWorkflow.set(row.workflow_id, row)
+    }
+  }
+
+  const portalUrl =
+    process.env.NEXT_PUBLIC_PORTAL_URL ?? "http://localhost:3001"
+
   return workflows.flatMap((workflow) => {
     const versionGraph = versionGraphByWorkflowId.get(workflow.id)
     if (!versionGraph) {
@@ -211,8 +267,18 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
     const nodes = versionGraph.nodes ?? []
     const triggerNode = nodes.find((node) => node.kind === "trigger")
     const triggerType =
-      typeof triggerNode?.config?.triggerType === "string"
-        ? triggerNode.config.triggerType
+      typeof triggerNode?.config?.triggerMode === "string"
+        ? triggerNode.config.triggerMode
+        : typeof triggerNode?.config?.operation === "string"
+          ? String(triggerNode.config.operation)
+          : typeof triggerNode?.config?.triggerType === "string"
+            ? triggerNode.config.triggerType
+            : undefined
+
+    const subscription = subscriptionByWorkflow.get(workflow.id)
+    const webhookUrl =
+      subscription?.webhook_token
+        ? `${portalUrl}/api/webhooks/${subscription.webhook_token}`
         : undefined
 
     return {
@@ -223,6 +289,8 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
       health: "healthy" as const,
       nodeCount: nodes.length,
       triggerType,
+      webhookUrl,
+      subscriptionStatus: subscription?.status,
     }
   })
 }
@@ -300,9 +368,25 @@ export async function getLiveWorkflow(
   const edges = publishedVersion.graph.edges ?? []
   const triggerNode = nodes.find((node) => node.kind === "trigger")
   const triggerType =
-    typeof triggerNode?.config?.triggerType === "string"
-      ? triggerNode.config.triggerType
-      : undefined
+    typeof triggerNode?.config?.triggerMode === "string"
+      ? triggerNode.config.triggerMode
+      : typeof triggerNode?.config?.operation === "string"
+        ? String(triggerNode.config.operation)
+        : typeof triggerNode?.config?.triggerType === "string"
+          ? triggerNode.config.triggerType
+          : undefined
+
+  const { data: subscription } = await auth.supabase
+    .from("workflow_trigger_subscriptions")
+    .select("webhook_token, status")
+    .eq("user_id", auth.userId)
+    .eq("workflow_id", workflowId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  const portalUrl =
+    process.env.NEXT_PUBLIC_PORTAL_URL ?? "http://localhost:3001"
 
   return {
     id: mapped.id,
@@ -312,6 +396,10 @@ export async function getLiveWorkflow(
     health: "healthy",
     nodeCount: nodes.length,
     triggerType,
+    webhookUrl: subscription?.webhook_token
+      ? `${portalUrl}/api/webhooks/${subscription.webhook_token}`
+      : undefined,
+    subscriptionStatus: subscription?.status,
     nodes,
     edges,
   }

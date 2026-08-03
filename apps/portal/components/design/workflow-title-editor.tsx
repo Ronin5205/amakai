@@ -6,16 +6,20 @@ import { PencilSimpleIcon } from "@phosphor-icons/react"
 import { Button } from "@amakai/shared/components/ui/button"
 import { Input } from "@amakai/shared/components/ui/input"
 import { cn } from "@amakai/shared/lib/utils"
+import { RESOURCE_NAME_MAX_LENGTH } from "@/lib/validation/limits"
+import { parseResourceName } from "@/lib/validation/resource-names"
 
 export interface WorkflowTitleEditorProps {
   name: string
   onNameChange: (name: string) => void
+  onValidationError?: (message: string) => void
   className?: string
 }
 
 export function WorkflowTitleEditor({
   name,
   onNameChange,
+  onValidationError,
   className,
 }: WorkflowTitleEditorProps) {
   const [isEditing, setIsEditing] = React.useState(false)
@@ -37,11 +41,21 @@ export function WorkflowTitleEditor({
 
   const commitName = () => {
     const trimmed = draftName.trim()
-    if (trimmed && trimmed !== name) {
-      onNameChange(trimmed)
-    } else {
+    if (!trimmed || trimmed === name) {
       setDraftName(name)
+      setIsEditing(false)
+      return
     }
+
+    const parsed = parseResourceName(trimmed, name)
+    if (!parsed.ok) {
+      onValidationError?.(parsed.error)
+      setDraftName(name)
+      setIsEditing(false)
+      return
+    }
+
+    onNameChange(parsed.name)
     setIsEditing(false)
   }
 
@@ -50,6 +64,7 @@ export function WorkflowTitleEditor({
       <Input
         ref={inputRef}
         value={draftName}
+        maxLength={RESOURCE_NAME_MAX_LENGTH}
         onChange={(event) => setDraftName(event.target.value)}
         onBlur={commitName}
         onKeyDown={(event) => {

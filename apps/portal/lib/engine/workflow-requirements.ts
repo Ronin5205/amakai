@@ -39,12 +39,21 @@ export type WorkflowTestRequirements = {
 }
 
 function mapTriggerRequirement(node: WorkflowNode): TriggerTestRequirement {
+  const catalogItemId = getCatalogItemId(node)
   const defs = parseOutputFieldDefs(node.config)
+
+  let triggerType = String(node.config.triggerType ?? "manual")
+  if (catalogItemId === "trigger.api" && typeof node.config.triggerMode === "string") {
+    triggerType = node.config.triggerMode
+  }
+  if (catalogItemId === "trigger.external-tool") {
+    triggerType = String(node.config.operation ?? "receive")
+  }
 
   return {
     nodeId: node.id,
     nodeLabel: node.label,
-    triggerType: String(node.config.triggerType ?? "manual"),
+    triggerType,
     outputFields:
       defs.length > 0
         ? defs

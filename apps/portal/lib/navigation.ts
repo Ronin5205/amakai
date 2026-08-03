@@ -1,7 +1,5 @@
 import type { Icon } from "@phosphor-icons/react"
 import {
-  BookOpenIcon,
-  BrainIcon,
   ClockCounterClockwiseIcon,
   CreditCardIcon,
   DotsThreeIcon,
@@ -9,10 +7,8 @@ import {
   GearIcon,
   HouseIcon,
   KeyIcon,
-  PlugsConnectedIcon,
   PlayIcon,
   PulseIcon,
-  PuzzlePieceIcon,
   RocketLaunchIcon,
   ScrollIcon,
   TableIcon,
@@ -91,30 +87,8 @@ export const portalNavigation: PortalNavItem[] = [
   },
   {
     title: "Resources",
-    icon: PuzzlePieceIcon,
-    items: [
-      {
-        title: "Components",
-        href: "/resources/components",
-        icon: PuzzlePieceIcon,
-      },
-      {
-        title: "Integrations",
-        href: "/resources/integrations",
-        icon: PlugsConnectedIcon,
-      },
-      {
-        title: "AI Models",
-        href: "/resources/ai-models",
-        icon: BrainIcon,
-      },
-      {
-        title: "Knowledge Base",
-        href: "/resources/knowledge-base",
-        icon: BookOpenIcon,
-      },
-      { title: "Secrets", href: "/resources/secrets", icon: KeyIcon },
-    ],
+    href: "/resources/secrets",
+    icon: KeyIcon,
   },
   {
     title: "Community",

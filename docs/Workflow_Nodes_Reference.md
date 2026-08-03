@@ -101,7 +101,7 @@ Pause/resume nodes (**Approval**, **Wait**) stop the run until the user approves
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `triggerType` | select | `webhook`, `schedule`, or `manual` (default `manual`) |
+| `triggerType` | select | `webhook`, `schedule`, or `manual` (default `manual`) — **metadata only**; does not register a live webhook. Use **API Trigger** for inbound HTTP. |
 | `outputFields` | output-fields | Declares fields added to the starting payload |
 
 New triggers default to one object field: `{ name: "payload", type: "object" }`.
@@ -134,9 +134,102 @@ Use an **array** output field when feeding **Loop Over Items**.
 
 ---
 
+### External Tool Trigger (`trigger.external-tool`)
+
+**Kind:** `trigger`  
+**Category:** Integrations  
+**Inputs:** none  
+**Outputs:** `main-out`
+
+Starts a workflow from an external service receive operation (currently **Gmail** / **Outlook** email receive).
+
+#### Configuration
+
+Cascade: **Service → Provider → Operation** (must be a `receive` operation for trigger nodes).
+
+| Field | Description |
+|-------|-------------|
+| `service` | e.g. `email` |
+| `provider` | `gmail` or `outlook` |
+| `operation` | `receive` |
+| `authMode` | Must be `secret` for OAuth providers |
+| `secretName` | Connected mailbox from Resources → Secrets |
+| `outputFields` | Defaults: from, to, subject, body, bodyHtml, messageId, threadId, receivedAt, attachments |
+
+Secret names auto-generated on OAuth connect use the mailbox local part (e.g. `Gmail user`) — not the full email address (see name validation in `lib/validation/`).
+
+#### Runtime
+
+- **Playground / Testing:** simulates a sample inbound email payload.
+- **Production:** Gmail Pub/Sub push (`/api/integrations/gmail/push`) or Outlook Graph notifications (`/api/integrations/outlook/webhook`) enqueue a run with the normalized message.
+
+Requires OAuth connect under **Resources → Secrets**, and for Gmail inbound set `GMAIL_PUBSUB_TOPIC`.
+
+---
+
+### API Trigger (`trigger.api`)
+
+**Kind:** `trigger`  
+**Category:** Integrations  
+**Inputs:** none  
+**Outputs:** `main-out`
+
+#### Configuration
+
+| Field | Description |
+|-------|-------------|
+| `triggerMode` | `webhook`, `schedule`, `manual`, or `signal` |
+| `webhookToken` | Auto-generated on create/deploy; URL `/api/webhooks/{token}` |
+| `authMode` | `none`, `secret` (HMAC / signing secret), or `public` (`X-Amakai-Key`) |
+| `secretName` | Signing secret when auth is Secret |
+| `publicApiKey` | Header value when auth is Public |
+| `outputFields` | Declared webhook/signal payload schema |
+
+#### Runtime
+
+| Mode | Testing / Validate | Live (deployed) |
+|------|-------------------|-----------------|
+| `webhook` | Simulated — provide payload in Testing or Validate | `POST /api/webhooks/{token}` with JSON body; optional HMAC or `X-Amakai-Key` auth |
+| `manual` | Simulated | **Production → Runs** only |
+| `schedule`, `signal` | Simulated | **Not auto-fired yet** (UI placeholder) |
+
+On deploy, a webhook subscription is registered and the public URL appears under **Operate → Live Workflows**.
+
+---
+
 ## Action nodes
 
 All action nodes are **kind** `sequential` unless noted. Standard port: `main-in` → `main-out`, except where listed.
+
+---
+
+### External Tool (`integrations.external-tool`)
+
+**Category:** Integrations  
+
+Cascade: **Service → Provider → Operation** (must be a sequential operation such as `send` or `emit`).
+
+#### Email send (Gmail / Outlook)
+
+| Field | Description |
+|-------|-------------|
+| `secretName` | OAuth secret from Resources → Secrets |
+| `toField` | Upstream recipient field |
+| `subjectField` / `subjectText` | Subject source |
+| `bodyField` / `bodyText` | Body source |
+| `ccField` / `bccField` | Optional |
+
+Playground simulates send; production calls Gmail API `users.messages.send` or Microsoft Graph `me/sendMail`.
+
+---
+
+### HTTP Request (`integrations.http-request`)
+
+**Category:** Integrations  
+
+Outbound REST call with method, URL (field or text), headers JSON, body, timeout, and credentials (`secret` / `public` / `none`).
+
+Playground stubs a 200 response; production performs `fetch`.
 
 ---
 
@@ -697,14 +790,18 @@ Use IF **true** / **false** branches for mutually exclusive paths (IF evaluates 
 
 ## Graph validation rules
 
-The playground rejects runs when:
+**Draft auto-save** (`lib/validation/`, Zod): enforces name/field length and character rules. Incomplete integration nodes are allowed.
+
+**Playground / Validate** rejects runs when:
 
 - No trigger node exists  
 - Any node is unreachable from a trigger  
 - A required input port has no incoming edge  
 - **Combine Branches** is missing any required `input-1` … `input-N` connection  
-- **Trigger** has no output fields (`trigger.workflow`)  
-- Required config is missing (empty code, table name, comparison values, etc.)
+- **Trigger** has no output fields (`trigger.workflow`, `trigger.api`)  
+- Required config is missing (empty code, table name, comparison values, integration secret, etc.)
+
+Integration nodes use stricter pre-run checks via `validateNodeConfigForRun` when wired into the playground.
 
 Maximum **200 steps** per run (`MAX_PLAYGROUND_STEPS`) to prevent infinite loops.
 
@@ -726,6 +823,7 @@ Maximum **200 steps** per run (`MAX_PLAYGROUND_STEPS`) to prevent infinite loops
 |-------|----------|
 | Catalog & labels | `apps/portal/lib/design/component-catalog.ts` |
 | Port specs & config schema | `apps/portal/lib/design/component-variant-definitions.ts` |
+| Input validation (Zod) | `apps/portal/lib/validation/` |
 | Dynamic Edit Fields ports | `apps/portal/lib/design/edit-fields.ts` |
 | Switch case model | `apps/portal/lib/design/switch-rules.ts` |
 | Comparison operators | `apps/portal/lib/design/comparison-rules.ts` |

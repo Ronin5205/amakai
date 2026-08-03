@@ -41,11 +41,15 @@ export default async function Page({ params }) {
 | `monitoring.ts` | `getWorkflowMonitoring` | Supabase + execution aggregation | `operate`, `monitoring` |
 | `templates.ts` | `listTemplates` | In-memory catalog templates | `template` |
 | `planning.ts` | `getPlanningStages`, `getSampleAnalysis`, `getClarificationQuestions` | Stubs (empty) | `planning` |
+| `secrets.ts` | CRUD, OAuth state, encrypted payloads | Supabase | `secret` |
+| `trigger-subscriptions.ts` | `syncTriggerSubscriptions`, webhook/email subscription lookup | Supabase | — |
+| `inbound-runs.ts` | `enqueueAndProcessInboundRun` (webhooks, email push) | Supabase | — |
 
 Supporting logic (not accessors):
 
 | Location | Role |
 |----------|------|
+| `lib/validation/` | Zod schemas and limits for names, tables, workflow node config |
 | `lib/operate/production-execution-insights.ts` | Parse run results → logs, monitoring metrics, trigger input |
 | `lib/operate/workflow-monitoring-profile.ts` | Adaptive monitoring sections from workflow graph + runs |
 | `lib/operate/execution-log-retention.ts` | `PRODUCTION_EXECUTION_RETENTION_LIMIT` (20 runs per workflow) |
@@ -62,6 +66,7 @@ Apply migrations in `supabase/migrations/` (oldest first):
 | `20260731200000_data_tables_unique_name.sql` | Unique table names per user |
 | `20260802150000_workflow_executions.sql` | Production run history |
 | `20260802153000_workflow_executions_delete_policy.sql` | Delete policy for retention pruning |
+| `20260803190000_secrets_and_triggers.sql` | Secrets vault, OAuth states, trigger subscriptions |
 
 ## Production execution flow
 

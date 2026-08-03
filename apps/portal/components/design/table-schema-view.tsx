@@ -12,6 +12,14 @@ import {
 import { saveDataTableAction } from "@/lib/actions/data-table-actions"
 import type { DataTable, DataTableColumn, DataTableColumnType } from "@/lib/domain/data-table"
 import { createDefaultColumn } from "@/lib/domain/data-table"
+import { validateSaveDataTableInput } from "@/lib/validation/data-table-schema"
+import {
+  RESOURCE_DESCRIPTION_MAX_LENGTH,
+  RESOURCE_NAME_MAX_LENGTH,
+  TABLE_COLUMN_KEY_MAX_LENGTH,
+  TABLE_COLUMN_LABEL_MAX_LENGTH,
+  TABLE_COLUMN_MAX_COUNT,
+} from "@/lib/validation/limits"
 import { Button } from "@amakai/shared/components/ui/button"
 import { Input } from "@amakai/shared/components/ui/input"
 import {
@@ -95,11 +103,25 @@ export function TableSchemaView({ table }: TableSchemaViewProps) {
     setSavedMessage(null)
     setIsSaving(true)
 
-    const result = await saveDataTableAction({
+    const normalizedColumns = normalizeColumns(columns)
+    const validation = validateSaveDataTableInput({
       id: table.id,
       name,
       description,
-      columns: normalizeColumns(columns),
+      columns: normalizedColumns,
+    })
+
+    if (!validation.ok) {
+      setIsSaving(false)
+      setError(validation.error)
+      return
+    }
+
+    const result = await saveDataTableAction({
+      id: table.id,
+      name: validation.data.name,
+      description: validation.data.description ?? undefined,
+      columns: validation.data.columns,
     })
 
     setIsSaving(false)
@@ -115,7 +137,13 @@ export function TableSchemaView({ table }: TableSchemaViewProps) {
   }
 
   const handleAddColumn = () => {
-    setColumns((current) => [...current, createDefaultColumn(current.length + 1)])
+    setColumns((current) => {
+      if (current.length >= TABLE_COLUMN_MAX_COUNT) {
+        setError(`Tables may have at most ${TABLE_COLUMN_MAX_COUNT} columns.`)
+        return current
+      }
+      return [...current, createDefaultColumn(current.length + 1)]
+    })
   }
 
   const handleRemoveColumn = (index: number) => {
@@ -187,10 +215,12 @@ export function TableSchemaView({ table }: TableSchemaViewProps) {
           <Input
             id="table-name"
             value={name}
+            maxLength={RESOURCE_NAME_MAX_LENGTH}
             onChange={(event) => setName(event.target.value)}
           />
           <FieldDescription>
-            Table names must be unique. Workflows reference tables by name.
+            Table names must be unique (up to {RESOURCE_NAME_MAX_LENGTH}{" "}
+            characters). Workflows reference tables by name.
           </FieldDescription>
         </Field>
         <Field>
@@ -199,6 +229,7 @@ export function TableSchemaView({ table }: TableSchemaViewProps) {
             id="table-description"
             value={description}
             rows={2}
+            maxLength={RESOURCE_DESCRIPTION_MAX_LENGTH}
             onChange={(event) => setDescription(event.target.value)}
           />
         </Field>
@@ -229,6 +260,7 @@ export function TableSchemaView({ table }: TableSchemaViewProps) {
                   <TableCell>
                     <Input
                       value={column.label}
+                      maxLength={TABLE_COLUMN_LABEL_MAX_LENGTH}
                       onChange={(event) => {
                         const label = event.target.value
                         setColumns((current) =>
@@ -244,6 +276,7 @@ export function TableSchemaView({ table }: TableSchemaViewProps) {
                     <Input
                       value={column.key}
                       className="font-mono text-xs"
+                      maxLength={TABLE_COLUMN_KEY_MAX_LENGTH}
                       onChange={(event) => {
                         const key = event.target.value
                         setColumns((current) =>

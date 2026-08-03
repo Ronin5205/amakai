@@ -8,6 +8,10 @@ export type LiveWorkflow = {
   health: "healthy" | "degraded" | "down"
   nodeCount: number
   triggerType?: string
+  /** Public webhook URL when an API trigger is deployed. */
+  webhookUrl?: string
+  /** Email / webhook subscription status from trigger registry. */
+  subscriptionStatus?: string
 }
 
 export type LiveWorkflowDetail = LiveWorkflow & {

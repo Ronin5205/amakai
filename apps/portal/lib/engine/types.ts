@@ -99,6 +99,24 @@ export type PlaygroundRunOptions = {
   completedWaits?: Record<string, boolean>
   /** Capture input/output payloads on node steps. */
   capturePayloads?: boolean
+  /** When production, integration nodes perform real I/O. */
+  executionMode?: "playground" | "production"
+  /**
+   * Optional server-injected executor for integration nodes.
+   * Must not be imported by Client Components — pass from production runners only.
+   */
+  integrationExecutor?: (
+    node: import("@/lib/domain/workflow").WorkflowNode,
+    payload: Record<string, unknown>
+  ) => Promise<
+    | {
+        ok: true
+        payload: Record<string, unknown>
+        message?: string
+        outputPort?: string
+      }
+    | { ok: false; message: string }
+  >
 }
 
 export type PlaygroundRunResult = {

@@ -5,6 +5,7 @@ import { Suspense } from "react"
 import { DesignHubView } from "@/components/design/design-hub-view"
 import { parseDesignPanelParam } from "@/lib/design/design-hub-types"
 import { listDataTableSummaries } from "@/lib/data/data-tables"
+import { listSecretSummaries } from "@/lib/data/secrets"
 import { getWorkflowDraft } from "@/lib/data/workflows"
 import {
   getClarificationQuestions,
@@ -37,6 +38,7 @@ export default async function WorkflowEditorPage({
     questions,
     templates,
     dataTables,
+    secrets,
   ] = await Promise.all([
     getWorkflowDraft(params.id),
     getSampleAnalysis(),
@@ -44,6 +46,7 @@ export default async function WorkflowEditorPage({
     getClarificationQuestions(),
     listTemplates(),
     listDataTableSummaries(),
+    listSecretSummaries(),
   ])
 
   if (!isPersistedWorkflowId(workflow.id)) {
@@ -61,6 +64,7 @@ export default async function WorkflowEditorPage({
         questions={questions}
         templates={templates}
         dataTables={dataTables}
+        secrets={secrets}
       />
     </Suspense>
   )

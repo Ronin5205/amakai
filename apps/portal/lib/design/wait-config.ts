@@ -1,11 +1,19 @@
+import {
+  WAIT_DURATION_MS_MAX,
+  WAIT_DURATION_MS_MIN,
+} from "@/lib/validation/limits"
+
 export function getWaitDurationMs(config: Record<string, unknown>) {
   const durationMs = Number(config.durationMs ?? 1000)
 
-  if (!Number.isFinite(durationMs) || durationMs < 0) {
+  if (!Number.isFinite(durationMs)) {
     return 1000
   }
 
-  return durationMs
+  return Math.min(
+    WAIT_DURATION_MS_MAX,
+    Math.max(WAIT_DURATION_MS_MIN, Math.floor(durationMs))
+  )
 }
 
 export function formatWaitDuration(durationMs: number) {

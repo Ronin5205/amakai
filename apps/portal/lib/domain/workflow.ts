@@ -34,6 +34,8 @@ export type ConfigFieldType =
   | "table-select"
   | "table-column-map"
   | "table-column-select"
+  | "secret-select"
+  | "integration-config"
   /** @internal Legacy — never surfaced in the inspector; nodes exchange JSON at runtime. */
   | "json"
 
@@ -46,6 +48,8 @@ export type ConfigSchemaField = {
   defaultValue?: unknown
   placeholder?: string
   options?: Array<{ label: string; value: string }>
+  /** When type is secret-select, optionally filter Resources → Secrets by kind. */
+  secretKinds?: string[]
 }
 
 export type NodeMetadata = {

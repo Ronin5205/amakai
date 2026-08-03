@@ -5,6 +5,7 @@ export type UserProfileSummary = {
   createdAt: string
   workflowCount: number
   tableCount: number
+  secretCount: number
 }
 
 export type DeleteUserDataResult = {

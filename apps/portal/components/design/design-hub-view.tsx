@@ -63,6 +63,7 @@ import type {
 import type { WorkflowTemplate } from "@/lib/domain/template"
 import type { Workflow } from "@/lib/domain/workflow"
 import type { DataTableSummary } from "@/lib/domain/data-table"
+import type { SecretSummary } from "@/lib/domain/secret"
 
 const designHubCollisionDetection: CollisionDetection = (args) => {
   const pointerHits = pointerWithin(args)
@@ -99,6 +100,7 @@ export interface DesignHubViewProps {
   questions: ClarificationQuestion[]
   templates: WorkflowTemplate[]
   dataTables?: DataTableSummary[]
+  secrets?: SecretSummary[]
 }
 
 export function DesignHubView({
@@ -109,6 +111,7 @@ export function DesignHubView({
   questions,
   templates,
   dataTables = [],
+  secrets = [],
 }: DesignHubViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -606,6 +609,7 @@ export function DesignHubView({
           selectedCount={selectedNodeIds.length}
           anchorScreen={inspectorAnchorScreen}
           dataTables={dataTables}
+          secrets={secrets}
           validationSteps={validationSteps}
           onLabelChange={(label) => {
             if (selectedNode) {

@@ -10,7 +10,6 @@ import {
   assertUniqueWorkflowName,
   cloneWorkflowGraph,
   generateUniqueWorkflowName,
-  normalizeWorkflowName,
 } from "@/lib/data/workflow-names"
 import {
   createEmptyDraftWorkflow,
@@ -19,6 +18,8 @@ import {
   toWorkflowGraphPayload,
   type WorkflowRow,
 } from "@/lib/data/workflow-mappers"
+import { parseResourceName } from "@/lib/validation/resource-names"
+import { validateWorkflowDraft } from "@/lib/validation/workflow-node-config"
 import { createClient } from "@/utils/supabase/server"
 
 async function getAuthenticatedUserId() {
@@ -104,8 +105,13 @@ export async function saveWorkflowDraft(workflow: Workflow): Promise<Workflow> {
     throw new Error("Sign in to save workflow drafts.")
   }
 
+  const validated = validateWorkflowDraft(workflow)
+  if (!validated.ok) {
+    throw new Error(validated.error)
+  }
+
   const payload = {
-    name: normalizeWorkflowName(workflow.name),
+    name: validated.name,
     status: workflow.status ?? "draft",
     graph: toWorkflowGraphPayload(workflow),
     updated_at: workflow.updatedAt,
@@ -161,10 +167,15 @@ export async function createWorkflowDraft(name?: string): Promise<Workflow> {
 
   await assertWorkflowLimitNotReached(auth.supabase, auth.userId)
 
+  const parsedName = parseResourceName(name ?? "", "Untitled workflow")
+  if (!parsedName.ok) {
+    throw new Error(parsedName.error)
+  }
+
   const uniqueName = await generateUniqueWorkflowName(
     auth.supabase,
     auth.userId,
-    name ?? "Untitled workflow"
+    parsedName.name
   )
 
   const { data, error } = await auth.supabase

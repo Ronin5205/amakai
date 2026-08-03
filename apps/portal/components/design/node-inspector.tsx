@@ -11,6 +11,7 @@ import type { PlaygroundStep } from "@/lib/engine/types"
 import { getCatalogItemId, resolveNodeDefinition } from "@/lib/design/resolve-node-definition"
 import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
 import type { DataTableSummary } from "@/lib/domain/data-table"
+import type { SecretSummary } from "@/lib/domain/secret"
 import { Button } from "@amakai/shared/components/ui/button"
 import {
   Field,
@@ -24,6 +25,7 @@ export interface NodeInspectorProps {
   workflow: Workflow
   selectedCount: number
   dataTables?: DataTableSummary[]
+  secrets?: SecretSummary[]
   validationSteps?: PlaygroundStep[]
   onLabelChange: (label: string) => void
   onConfigChange: (key: string, value: unknown) => void
@@ -35,6 +37,7 @@ export function NodeInspector({
   workflow,
   selectedCount,
   dataTables,
+  secrets,
   validationSteps = [],
   onLabelChange,
   onConfigChange,
@@ -115,6 +118,7 @@ export function NodeInspector({
                 values={node.config}
                 idPrefix={`${node.id}-config`}
                 dataTables={dataTables}
+                secrets={secrets}
                 onChange={onConfigChange}
               />
             ) : null}

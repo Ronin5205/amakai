@@ -11,6 +11,7 @@ import {
 import { NodeInspector } from "@/components/design/node-inspector"
 import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
 import type { DataTableSummary } from "@/lib/domain/data-table"
+import type { SecretSummary } from "@/lib/domain/secret"
 import type { PlaygroundStep } from "@/lib/engine/types"
 import {
   clampInspectorPosition,
@@ -32,6 +33,7 @@ export interface EditorNodeInspectorPanelProps {
   selectedCount: number
   anchorScreen: InspectorAnchorScreen | null
   dataTables?: DataTableSummary[]
+  secrets?: SecretSummary[]
   validationSteps?: PlaygroundStep[]
   onLabelChange: (label: string) => void
   onConfigChange: (key: string, value: unknown) => void
@@ -55,6 +57,7 @@ export function EditorNodeInspectorPanel({
   selectedCount,
   anchorScreen,
   dataTables,
+  secrets,
   validationSteps,
   onLabelChange,
   onConfigChange,
@@ -309,6 +312,7 @@ export function EditorNodeInspectorPanel({
           workflow={workflow}
           selectedCount={selectedCount}
           dataTables={dataTables}
+          secrets={secrets}
           validationSteps={validationSteps}
           onLabelChange={onLabelChange}
           onConfigChange={onConfigChange}

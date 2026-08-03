@@ -84,7 +84,14 @@ export function LiveWorkflowsView({
                 <StatusBadge status="production" label="Live" />
               </TableCell>
               <TableCell className="capitalize text-muted-foreground">
-                {workflow.triggerType ?? "—"}
+                <div className="flex flex-col gap-1">
+                  <span>{workflow.triggerType ?? "—"}</span>
+                  {workflow.webhookUrl ? (
+                    <span className="max-w-[220px] truncate text-[11px] normal-case text-muted-foreground/80">
+                      {workflow.webhookUrl}
+                    </span>
+                  ) : null}
+                </div>
               </TableCell>
               <TableCell className="text-muted-foreground">
                 {workflow.nodeCount}

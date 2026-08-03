@@ -541,9 +541,63 @@ async function processNodeInPlayground(
 
   switch (node.kind) {
     case "trigger": {
-      const triggerType = String(node.config.triggerType ?? "manual")
+      if (catalogItemId === "trigger.external-tool") {
+        const { resolveIntegrationOperationFromNode } = await import(
+          "@/lib/integrations/registry"
+        )
+        const operation = resolveIntegrationOperationFromNode(node)
+        if (!operation) {
+          return {
+            ok: false,
+            message:
+              "Configure service, provider, and a receive operation on this External Tool trigger.",
+          }
+        }
+        const customValues = options?.triggerPayloads?.[node.id]
+        if (customValues && Object.keys(customValues).length > 0) {
+          return {
+            ok: true,
+            outputPort: resolveOutputPortId(node) ?? "main-out",
+            payload: {
+              ...customValues,
+              triggerType:
+                typeof customValues.triggerType === "string"
+                  ? customValues.triggerType
+                  : "email",
+              triggeredAt:
+                typeof customValues.triggeredAt === "string"
+                  ? customValues.triggeredAt
+                  : new Date().toISOString(),
+            },
+            message: "External tool trigger fired",
+          }
+        }
+
+        const result = await operation.executePlayground({
+          node,
+          payload: {},
+          mode: "playground",
+        })
+        if (!result.ok) {
+          return result
+        }
+        return {
+          ok: true,
+          outputPort: resolveOutputPortId(node) ?? "main-out",
+          payload: result.payload,
+          message: result.message ?? "External tool trigger fired",
+        }
+      }
+
+      const triggerType = String(
+        node.config.triggerMode ?? node.config.triggerType ?? "manual"
+      )
       const outputFields = parseOutputFieldDefs(node.config)
-      if (catalogItemId === "trigger.workflow" && outputFields.length === 0) {
+      if (
+        (catalogItemId === "trigger.workflow" ||
+          catalogItemId === "trigger.api") &&
+        outputFields.length === 0
+      ) {
         return {
           ok: false,
           message: "Trigger must define at least one output field",
@@ -559,12 +613,75 @@ async function processNodeInPlayground(
       return {
         ok: true,
         outputPort: resolveOutputPortId(node) ?? "main-out",
-        payload: triggerPayload,
+        payload: {
+          ...triggerPayload,
+          triggerType,
+        },
         message: `Trigger fired (${triggerType})`,
       }
     }
 
     case "sequential": {
+      if (
+        catalogItemId === "integrations.external-tool" ||
+        catalogItemId === "integrations.http-request"
+      ) {
+        const inputPayload =
+          typeof payload === "object" && payload !== null
+            ? (payload as Record<string, unknown>)
+            : {}
+
+        if (
+          options?.executionMode === "production" &&
+          options.integrationExecutor
+        ) {
+          const result = await options.integrationExecutor(node, inputPayload)
+          if (!result.ok) {
+            return result
+          }
+          return passThrough(
+            node,
+            result.payload,
+            result.message ?? "External integration completed",
+            result.outputPort ?? "main-out"
+          )
+        }
+
+        const { resolveIntegrationOperationFromNode, getIntegrationOperation } =
+          await import("@/lib/integrations/registry")
+        const operation =
+          catalogItemId === "integrations.http-request"
+            ? getIntegrationOperation("api", "rest", "request")
+            : resolveIntegrationOperationFromNode(node)
+
+        if (!operation) {
+          return {
+            ok: false,
+            message:
+              catalogItemId === "integrations.http-request"
+                ? "HTTP Request configuration is incomplete."
+                : "Configure service, provider, and operation on this External Tool node.",
+          }
+        }
+
+        const result = await operation.executePlayground({
+          node,
+          payload: inputPayload,
+          mode: "playground",
+        })
+
+        if (!result.ok) {
+          return result
+        }
+
+        return passThrough(
+          node,
+          result.payload,
+          result.message ?? "External integration completed",
+          result.outputPort ?? "main-out"
+        )
+      }
+
       if (catalogItemId === "action.code") {
         const code = node.config.code
         if (!code || String(code).trim() === "") {

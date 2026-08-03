@@ -4,6 +4,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
   DatabaseIcon,
+  KeyIcon,
   TreeStructureIcon,
   UserCircleIcon,
 } from "@phosphor-icons/react"
@@ -14,6 +15,7 @@ import { usePortalSession } from "@/hooks/use-portal-session"
 import {
   deleteAccountAction,
   deleteAllDataTablesAction,
+  deleteAllSecretsAction,
   deleteAllUserDataAction,
   deleteAllWorkflowsAction,
 } from "@/lib/actions/settings-actions"
@@ -38,6 +40,7 @@ import { Separator } from "@amakai/shared/components/ui/separator"
 type DestructiveAction =
   | "workflows"
   | "tables"
+  | "secrets"
   | "all-data"
   | "account"
   | null
@@ -128,6 +131,30 @@ export function SettingsView({ profile: initialProfile }: SettingsViewProps) {
       result.deletedCount
         ? `Deleted ${result.deletedCount} table${result.deletedCount === 1 ? "" : "s"}.`
         : "No tables to delete."
+    )
+    router.refresh()
+  }
+
+  const handleDeleteSecrets = async () => {
+    setIsConfirming(true)
+    setError(null)
+    setSuccessMessage(null)
+
+    const result = await deleteAllSecretsAction()
+
+    setIsConfirming(false)
+
+    if ("error" in result) {
+      setError(result.error)
+      return
+    }
+
+    setProfile((current) => ({ ...current, secretCount: 0 }))
+    setActiveAction(null)
+    setSuccessMessage(
+      result.deletedCount
+        ? `Deleted ${result.deletedCount} secret${result.deletedCount === 1 ? "" : "s"}.`
+        : "No secrets to delete."
     )
     router.refresh()
   }
@@ -232,6 +259,7 @@ export function SettingsView({ profile: initialProfile }: SettingsViewProps) {
               value={profile.workflowCount.toString()}
             />
             <ProfileField label="Tables" value={profile.tableCount.toString()} />
+            <ProfileField label="Secrets" value={profile.secretCount.toString()} />
           </dl>
         </CardContent>
       </Card>
@@ -298,6 +326,28 @@ export function SettingsView({ profile: initialProfile }: SettingsViewProps) {
               onClick={() => setActiveAction("tables")}
             >
               Delete all tables
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-4 border p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <KeyIcon className="size-4" />
+                Secrets
+              </span>
+              <span className="text-sm text-muted-foreground">
+                Delete all {profile.secretCount} stored secret
+                {profile.secretCount === 1 ? "" : "s"}, including API keys and
+                connected OAuth accounts.
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              disabled={profile.secretCount === 0 || isConfirming}
+              className="w-full shrink-0 sm:w-auto"
+              onClick={() => setActiveAction("secrets")}
+            >
+              Delete all secrets
             </Button>
           </div>
 
@@ -377,6 +427,25 @@ export function SettingsView({ profile: initialProfile }: SettingsViewProps) {
         confirmLabel="Delete all tables"
         isConfirming={isConfirming}
         onConfirm={handleDeleteTables}
+      />
+
+      <ConfirmDestructiveDialog
+        open={activeAction === "secrets"}
+        onOpenChange={(open) => {
+          if (!open) closeDialog()
+        }}
+        title="Delete all secrets?"
+        description={
+          <>
+            This permanently deletes all {profile.secretCount} secret
+            {profile.secretCount === 1 ? "" : "s"}, including API keys, bearer
+            tokens, webhook signing keys, and connected Gmail or Outlook
+            accounts. Workflows that reference these secrets will stop working.
+          </>
+        }
+        confirmLabel="Delete all secrets"
+        isConfirming={isConfirming}
+        onConfirm={handleDeleteSecrets}
       />
 
       <ConfirmDestructiveDialog

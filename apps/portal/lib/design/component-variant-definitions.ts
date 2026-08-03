@@ -153,6 +153,122 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
       },
     ],
   },
+  "trigger.external-tool": {
+    catalogItemId: "trigger.external-tool",
+    inputs: [],
+    outputs: [
+      output(
+        "main-out",
+        "Output",
+        "Starts the workflow with the inbound external-tool payload."
+      ),
+    ],
+    configSchema: [
+      {
+        key: "integration",
+        label: "Service / provider / operation",
+        type: "integration-config",
+      },
+    ],
+  },
+  "trigger.api": {
+    catalogItemId: "trigger.api",
+    inputs: [],
+    outputs: [
+      output(
+        "main-out",
+        "Output",
+        "Starts the workflow from a webhook, schedule, manual run, or signal."
+      ),
+    ],
+    configSchema: [
+      {
+        key: "triggerMode",
+        label: "Mode",
+        type: "select",
+        options: [
+          { label: "Webhook", value: "webhook" },
+          { label: "Schedule", value: "schedule" },
+          { label: "Manual", value: "manual" },
+          { label: "Signal", value: "signal" },
+        ],
+        defaultValue: "webhook",
+      },
+      {
+        key: "webhookToken",
+        label: "Webhook token",
+        type: "string",
+        description:
+          "Auto-filled on deploy. Public URL: /api/webhooks/{token}",
+      },
+      {
+        key: "authMode",
+        label: "Webhook auth",
+        type: "select",
+        options: [
+          { label: "None", value: "none" },
+          { label: "Secret (HMAC / signing)", value: "secret" },
+          { label: "Public header key", value: "public" },
+        ],
+        defaultValue: "none",
+      },
+      {
+        key: "secretName",
+        label: "Signing secret",
+        type: "secret-select",
+        secretKinds: ["webhook_signing", "api_key"],
+      },
+      {
+        key: "publicApiKey",
+        label: "Public header value",
+        type: "string",
+        description: "Compared to X-Amakai-Key when auth is Public.",
+      },
+      {
+        key: "outputFields",
+        label: "Output fields",
+        type: "output-fields",
+        description: "Declares the expected webhook/signal payload schema.",
+      },
+    ],
+  },
+  "integrations.external-tool": {
+    catalogItemId: "integrations.external-tool",
+    inputs: [STANDARD_INPUT],
+    outputs: [STANDARD_OUTPUT],
+    configSchema: [
+      {
+        key: "integration",
+        label: "Service / provider / operation",
+        type: "integration-config",
+      },
+    ],
+  },
+  "integrations.http-request": {
+    catalogItemId: "integrations.http-request",
+    inputs: [STANDARD_INPUT],
+    outputs: [STANDARD_OUTPUT],
+    configSchema: [
+      {
+        key: "method",
+        label: "Method",
+        type: "select",
+        options: [
+          { label: "GET", value: "GET" },
+          { label: "POST", value: "POST" },
+          { label: "PUT", value: "PUT" },
+          { label: "PATCH", value: "PATCH" },
+          { label: "DELETE", value: "DELETE" },
+        ],
+        defaultValue: "GET",
+      },
+      {
+        key: "urlText",
+        label: "URL",
+        type: "string",
+      },
+    ],
+  },
   "action.code": {
     catalogItemId: "action.code",
     inputs: [STANDARD_INPUT],
@@ -694,6 +810,37 @@ export function getDefaultVariantConfig(catalogItemId: string) {
     config.outputFieldDefs = [{ name: "payload", type: "object" }]
     config.outputFields = ["payload"]
     config.outputFieldTypes = { payload: "object" }
+  }
+
+  if (catalogItemId === "trigger.api") {
+    config.outputFieldDefs = [{ name: "payload", type: "object" }]
+    config.outputFields = ["payload"]
+    config.outputFieldTypes = { payload: "object" }
+    if (!config.webhookToken) {
+      config.webhookToken = crypto.randomUUID()
+    }
+  }
+
+  if (catalogItemId === "trigger.external-tool") {
+    config.outputFieldDefs = [
+      { name: "from", type: "string" },
+      { name: "to", type: "string" },
+      { name: "subject", type: "string" },
+      { name: "body", type: "string" },
+      { name: "bodyHtml", type: "string" },
+      { name: "messageId", type: "string" },
+      { name: "threadId", type: "string" },
+      { name: "receivedAt", type: "string" },
+      { name: "attachments", type: "array" },
+    ]
+    config.outputFields = (
+      config.outputFieldDefs as Array<{ name: string }>
+    ).map((field) => field.name)
+    config.outputFieldTypes = Object.fromEntries(
+      (config.outputFieldDefs as Array<{ name: string; type: string }>).map(
+        (field) => [field.name, field.type]
+      )
+    )
   }
 
   return config

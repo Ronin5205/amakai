@@ -13,6 +13,12 @@ import {
   type DataTableRowDb,
   type DataTableRowRecordDb,
 } from "@/lib/data/data-table-mappers"
+import { validateSaveDataTableInput } from "@/lib/validation/data-table-schema"
+import {
+  normalizeValidatedResourceName,
+  parseOptionalDescription,
+  parseResourceName,
+} from "@/lib/validation/resource-names"
 import { createClient } from "@/utils/supabase/server"
 
 async function getAuthenticatedUserId() {
@@ -30,7 +36,7 @@ async function getAuthenticatedUserId() {
 }
 
 function normalizeTableName(name: string) {
-  return name.trim() || "Untitled table"
+  return normalizeValidatedResourceName(name, "Untitled table")
 }
 
 async function assertUniqueTableName(
@@ -232,10 +238,20 @@ export async function createDataTable(
 
   await assertDataTableLimitNotReached(auth.supabase, auth.userId)
 
+  const parsedName = parseResourceName(name ?? "", "Untitled table")
+  if (!parsedName.ok) {
+    throw new Error(parsedName.error)
+  }
+
+  const parsedDescription = parseOptionalDescription(description)
+  if (!parsedDescription.ok) {
+    throw new Error(parsedDescription.error)
+  }
+
   const uniqueName = await generateUniqueTableName(
     auth.supabase,
     auth.userId,
-    name ?? "Untitled table"
+    parsedName.name
   )
 
   const { data, error } = await auth.supabase
@@ -243,7 +259,7 @@ export async function createDataTable(
     .insert({
       user_id: auth.userId,
       name: uniqueName,
-      description: description?.trim() || null,
+      description: parsedDescription.description,
       columns: [{ key: "field_1", label: "Field 1", type: "string" }],
     })
     .select("*")
@@ -273,10 +289,15 @@ export async function saveDataTable(input: SaveDataTableInput): Promise<DataTabl
     throw new Error("Table not found.")
   }
 
+  const validated = validateSaveDataTableInput(input)
+  if (!validated.ok) {
+    throw new Error(validated.error)
+  }
+
   const payload = {
-    name: normalizeTableName(input.name),
-    description: input.description?.trim() || null,
-    columns: input.columns,
+    name: validated.data.name,
+    description: validated.data.description ?? null,
+    columns: validated.data.columns,
     updated_at: new Date().toISOString(),
   }
 

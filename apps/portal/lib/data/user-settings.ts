@@ -3,6 +3,7 @@ import type {
   DeleteUserDataResult,
   UserProfileSummary,
 } from "@/lib/domain/settings"
+import { countUserSecrets } from "@/lib/data/secrets"
 import { countUserDataTables } from "@/lib/data/table-limits"
 import { countUserWorkflows } from "@/lib/data/workflow-limits"
 import { createClient } from "@/utils/supabase/server"
@@ -27,9 +28,10 @@ export async function getUserProfileSummary(): Promise<UserProfileSummary | null
     return null
   }
 
-  const [workflowCount, tableCount] = await Promise.all([
+  const [workflowCount, tableCount, secretCount] = await Promise.all([
     countUserWorkflows(auth.supabase, auth.userId),
     countUserDataTables(auth.supabase, auth.userId),
+    countUserSecrets(auth.supabase, auth.userId),
   ])
 
   const displayName =
@@ -44,6 +46,7 @@ export async function getUserProfileSummary(): Promise<UserProfileSummary | null
     createdAt: auth.user.created_at,
     workflowCount,
     tableCount,
+    secretCount,
   }
 }
 
