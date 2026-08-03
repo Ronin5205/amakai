@@ -16,6 +16,8 @@ export interface PortalPageCopy {
 export const portalRoutes = {
   signIn: "/login",
   signUp: "/signup",
+  forgotPassword: "/forgot-password",
+  resetPassword: "/reset-password",
 } as const
 
 /**
@@ -35,8 +37,21 @@ export const portal = {
   signUp: {
     title: "Create an account",
     description:
-      "Create your portal account with Google, GitHub, or email and password.",
+      "Choose a username and create your portal account with Google, GitHub, or email and password.",
     crossLinkPrompt: "Already have an account?",
     crossLink: { label: "Sign in", href: portalRoutes.signIn },
+  } satisfies PortalPageCopy,
+  forgotPassword: {
+    title: "Reset your password",
+    description:
+      "Enter the email address for your account and we will send you a link to choose a new password.",
+    crossLinkPrompt: "Remember your password?",
+    crossLink: { label: "Back to sign in", href: portalRoutes.signIn },
+  } satisfies PortalPageCopy,
+  resetPassword: {
+    title: "Choose a new password",
+    description: "Enter a new password for your account.",
+    crossLinkPrompt: "Need a new reset link?",
+    crossLink: { label: "Request one", href: portalRoutes.forgotPassword },
   } satisfies PortalPageCopy,
 }

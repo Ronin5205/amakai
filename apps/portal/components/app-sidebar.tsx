@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { CaretRightIcon } from "@phosphor-icons/react"
 
 import {
@@ -35,31 +35,54 @@ import {
 } from "@amakai/shared/components/ui/sidebar"
 import { siteConfig } from "@amakai/shared/lib/site-config"
 import { cn } from "@amakai/shared/lib/utils"
-function NavLinkItem({ item, pathname }: { item: PortalNavItem; pathname: string }) {
+function NavSectionLinkItem({
+  item,
+  pathname,
+  search,
+}: {
+  item: PortalNavItem
+  pathname: string
+  search: string
+}) {
   if (!item.href) return null
 
   const Icon = item.icon
-  const active = isNavItemActive(pathname, item.href)
+  const active = isNavItemActive(pathname, item.href, search)
 
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        isActive={active}
-        tooltip={item.title}
-        render={<Link href={item.href} />}
+    <SidebarGroup>
+      <SidebarGroupLabel
+        className={cn(
+          "hover:text-sidebar-accent-foreground",
+          active && "font-medium text-sidebar-accent-foreground"
+        )}
+        render={
+          <Link
+            href={item.href}
+            className="flex w-full items-center gap-2 outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+          />
+        }
       >
         <Icon />
-        <span>{item.title}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
+        <span className="flex-1 text-start">{item.title}</span>
+      </SidebarGroupLabel>
+    </SidebarGroup>
   )
 }
 
-function NavGroupItem({ item, pathname }: { item: PortalNavItem; pathname: string }) {
+function NavGroupItem({
+  item,
+  pathname,
+  search,
+}: {
+  item: PortalNavItem
+  pathname: string
+  search: string
+}) {
   if (!item.items?.length) return null
 
   const Icon = item.icon
-  const open = isNavGroupActive(pathname, item)
+  const open = isNavGroupActive(pathname, item, search)
 
   return (
     <Collapsible defaultOpen={open} className="group/collapsible">
@@ -81,7 +104,7 @@ function NavGroupItem({ item, pathname }: { item: PortalNavItem; pathname: strin
                   if (!subItem.href) return null
 
                   const SubIcon = subItem.icon
-                  const active = isNavItemActive(pathname, subItem.href)
+                  const active = isNavItemActive(pathname, subItem.href, search)
 
                   return (
                     <SidebarMenuSubItem key={subItem.href}>
@@ -134,6 +157,8 @@ function SidebarLogo() {
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const search = searchParams.toString()
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -146,21 +171,21 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {portalNavigation.map((item) =>
-                item.href ? (
-                  <NavLinkItem key={item.title} item={item} pathname={pathname} />
-                ) : null
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
         {portalNavigation.map((item) =>
-          item.items ? (
-            <NavGroupItem key={item.title} item={item} pathname={pathname} />
+          item.items?.length ? (
+            <NavGroupItem
+              key={item.title}
+              item={item}
+              pathname={pathname}
+              search={search}
+            />
+          ) : item.href ? (
+            <NavSectionLinkItem
+              key={item.title}
+              item={item}
+              pathname={pathname}
+              search={search}
+            />
           ) : null
         )}
       </SidebarContent>

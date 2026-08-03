@@ -11,6 +11,7 @@ import {
   SunIcon,
 } from "@phosphor-icons/react"
 
+import { getUsernameInitials } from "@/lib/auth/user"
 import { usePortalSession } from "@/hooks/use-portal-session"
 import { portalRoutes } from "@/lib/content"
 import {
@@ -47,23 +48,14 @@ const themeIcons = {
 
 export function UserMenu() {
   const router = useRouter()
-  const { user, isSignedIn, isLoading, signOut } = usePortalSession()
+  const { user, username, isSignedIn, isLoading, signOut } = usePortalSession()
   const [preference, setPreference] = React.useState<ThemePreference>(
     getThemePreference
   )
 
   const SettingsIcon = userMenuActions.settings.icon
   const ExtrasIcon = userMenuActions.extras.icon
-  const displayName =
-    user?.user_metadata.full_name ??
-    user?.user_metadata.name ??
-    user?.email?.split("@")[0] ??
-    "Account"
-  const initials = displayName
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part: string) => part[0]?.toUpperCase() ?? "")
-    .join("")
+  const initials = username ? getUsernameInitials(username) : "A"
 
   async function handleSignOut() {
     await signOut()
@@ -95,7 +87,7 @@ export function UserMenu() {
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col gap-0.5">
                   <span className="truncate text-xs font-medium">
-                    {displayName}
+                    {username ? `@${username}` : "Account"}
                   </span>
                   <span className="truncate text-[11px] font-normal text-muted-foreground">
                     {user.email}

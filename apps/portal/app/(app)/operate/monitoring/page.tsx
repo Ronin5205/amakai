@@ -1,11 +1,5 @@
-import type { Metadata } from "next"
+import { redirect } from "next/navigation"
 
-import { SectionPage } from "@/components/section-page"
-
-export const metadata: Metadata = {
-  title: "Monitoring",
-}
-
-export default function Page() {
-  return <SectionPage eyebrow="Operate" title="Monitoring" />
+export default function MonitoringRedirectPage() {
+  redirect("/operate/live-workflows")
 }
