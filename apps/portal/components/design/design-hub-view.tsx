@@ -33,6 +33,8 @@ import type { ConnectionDraft, PendingConnectionPlacement } from "@/lib/design/c
 import { useDesignHubState } from "@/hooks/use-design-hub-state"
 import { useWorkflowValidation } from "@/hooks/use-workflow-validation"
 import { useWorkflowAutoSave } from "@/hooks/use-workflow-auto-save"
+import { workflowGraphSignature } from "@/lib/data/workflow-graph-signature"
+import { getDeployDisabledReason } from "@/lib/design/deploy-disabled-reason"
 import { deleteWorkflowAction } from "@/lib/actions/workflow-actions"
 import { isPersistedWorkflowId } from "@/lib/data/workflow-mappers"
 import {
@@ -130,6 +132,9 @@ export function DesignHubView({
     null
   )
   const [deployMessage, setDeployMessage] = React.useState<string | null>(null)
+  const [publishedGraphSignature, setPublishedGraphSignature] = React.useState(
+    initialWorkflow.publishedGraphSignature ?? null
+  )
   const [actionMessage, setActionMessage] = React.useState<string | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false)
@@ -233,6 +238,23 @@ export function DesignHubView({
     pendingWait: validationPendingWait,
     isRunning: isValidating,
   } = useWorkflowValidation(workflow)
+
+  const hasUnpublishedChanges = React.useMemo(() => {
+    if (!publishedGraphSignature) {
+      return false
+    }
+
+    return workflowGraphSignature(workflow) !== publishedGraphSignature
+  }, [publishedGraphSignature, workflow])
+
+  const deployDisabledReason = React.useMemo(
+    () => getDeployDisabledReason(isDeployable, validationStatus),
+    [isDeployable, validationStatus]
+  )
+
+  React.useEffect(() => {
+    setPublishedGraphSignature(initialWorkflow.publishedGraphSignature ?? null)
+  }, [initialWorkflow.id, initialWorkflow.publishedGraphSignature])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -403,7 +425,10 @@ export function DesignHubView({
     setDeployMessage(null)
 
     if (!isDeployable) {
-      setDeployMessage("Validate the workflow in the playground before deploying.")
+      setDeployMessage(
+        deployDisabledReason ??
+          "Validate the workflow in the playground before deploying."
+      )
       return
     }
 
@@ -563,6 +588,8 @@ export function DesignHubView({
           deployMessage={deployMessage}
           validationStatus={validationStatus}
           isDeployable={isDeployable}
+          deployDisabledReason={deployDisabledReason}
+          hasUnpublishedChanges={hasUnpublishedChanges}
           isValidating={isValidating}
           onNameChange={handleWorkflowNameChange}
           onOpenResources={handleOpenResources}
@@ -625,6 +652,7 @@ export function DesignHubView({
         onOpenChange={setDeployOpen}
         workflowId={deployWorkflowId}
         onDeployed={() => {
+          setPublishedGraphSignature(workflowGraphSignature(workflow))
           setDeployMessage("Workflow is live in production.")
         }}
       />

@@ -16,6 +16,7 @@ import {
   deleteDataTableAction,
   duplicateDataTableAction,
 } from "@/lib/actions/data-table-actions"
+import type { DataTableLimitState } from "@/lib/data/table-limits"
 import type { DataTable } from "@/lib/domain/data-table"
 import { Button } from "@amakai/shared/components/ui/button"
 import {
@@ -37,6 +38,7 @@ import {
 
 export interface TablesViewProps {
   tables: DataTable[]
+  tableLimit?: DataTableLimitState | null
 }
 
 function formatUpdatedAt(value: string) {
@@ -49,7 +51,10 @@ function formatUpdatedAt(value: string) {
   })
 }
 
-export function TablesView({ tables: initialTables }: TablesViewProps) {
+export function TablesView({
+  tables: initialTables,
+  tableLimit = null,
+}: TablesViewProps) {
   const router = useRouter()
   const [tables, setTables] = React.useState(initialTables)
   const [isCreating, setIsCreating] = React.useState(false)
@@ -57,6 +62,7 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
   const [duplicatingId, setDuplicatingId] = React.useState<string | null>(null)
   const [tableToDelete, setTableToDelete] = React.useState<DataTable | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const atTableLimit = tableLimit ? !tableLimit.canCreate : false
 
   React.useEffect(() => {
     setTables(initialTables)
@@ -133,11 +139,20 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
           </div>
         </div>
 
-        <Button onClick={handleCreate} disabled={isCreating}>
+        <Button onClick={handleCreate} disabled={isCreating || atTableLimit}>
           <PlusIcon data-icon="inline-start" />
           {isCreating ? "Creating…" : "New table"}
         </Button>
       </div>
+
+      {tableLimit ? (
+        <p className="text-xs text-muted-foreground">
+          {tableLimit.count} of {tableLimit.limit} tables used.
+          {atTableLimit
+            ? " Delete an existing table to create a new one."
+            : null}
+        </p>
+      ) : null}
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
@@ -154,7 +169,7 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button onClick={handleCreate} disabled={isCreating}>
+            <Button onClick={handleCreate} disabled={isCreating || atTableLimit}>
               <PlusIcon data-icon="inline-start" />
               Create table
             </Button>
@@ -206,6 +221,7 @@ export function TablesView({ tables: initialTables }: TablesViewProps) {
                       <ResourceRowActionsMenu
                         isDuplicating={duplicatingId === table.id}
                         isDeleting={deletingId === table.id}
+                        duplicateDisabled={atTableLimit}
                         onDuplicate={() => handleDuplicate(table)}
                         onDelete={() => setTableToDelete(table)}
                       />

@@ -17,6 +17,7 @@ import {
   deleteWorkflowAction,
   duplicateWorkflowAction,
 } from "@/lib/actions/workflow-actions"
+import type { WorkflowLimitState } from "@/lib/data/workflow-limits"
 import type { Workflow } from "@/lib/domain/workflow"
 import { Button } from "@amakai/shared/components/ui/button"
 import {
@@ -38,6 +39,8 @@ import {
 
 export interface WorkflowsViewProps {
   workflows: Workflow[]
+  workflowLimit?: WorkflowLimitState | null
+  limitError?: string | null
 }
 
 function formatUpdatedAt(value: string) {
@@ -50,7 +53,11 @@ function formatUpdatedAt(value: string) {
   })
 }
 
-export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProps) {
+export function WorkflowsView({
+  workflows: initialWorkflows,
+  workflowLimit = null,
+  limitError = null,
+}: WorkflowsViewProps) {
   const router = useRouter()
   const [workflows, setWorkflows] = React.useState(initialWorkflows)
   const [isCreating, setIsCreating] = React.useState(false)
@@ -59,11 +66,16 @@ export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProp
   const [workflowToDelete, setWorkflowToDelete] = React.useState<Workflow | null>(
     null
   )
-  const [error, setError] = React.useState<string | null>(null)
+  const [error, setError] = React.useState<string | null>(limitError)
+  const atWorkflowLimit = workflowLimit ? !workflowLimit.canCreate : false
 
   React.useEffect(() => {
     setWorkflows(initialWorkflows)
   }, [initialWorkflows])
+
+  React.useEffect(() => {
+    setError(limitError)
+  }, [limitError])
 
   const handleCreate = async () => {
     setError(null)
@@ -138,11 +150,20 @@ export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProp
           </div>
         </div>
 
-        <Button onClick={handleCreate} disabled={isCreating}>
+        <Button onClick={handleCreate} disabled={isCreating || atWorkflowLimit}>
           <PlusIcon data-icon="inline-start" />
           {isCreating ? "Creating…" : "New workflow"}
         </Button>
       </div>
+
+      {workflowLimit ? (
+        <p className="text-xs text-muted-foreground">
+          {workflowLimit.count} of {workflowLimit.limit} workflows used.
+          {atWorkflowLimit
+            ? " Delete an existing workflow to create a new one."
+            : null}
+        </p>
+      ) : null}
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
@@ -159,7 +180,7 @@ export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProp
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button onClick={handleCreate} disabled={isCreating}>
+            <Button onClick={handleCreate} disabled={isCreating || atWorkflowLimit}>
               <PlusIcon data-icon="inline-start" />
               Create workflow
             </Button>
@@ -208,6 +229,7 @@ export function WorkflowsView({ workflows: initialWorkflows }: WorkflowsViewProp
                       <ResourceRowActionsMenu
                         isDuplicating={duplicatingId === workflow.id}
                         isDeleting={deletingId === workflow.id}
+                        duplicateDisabled={atWorkflowLimit}
                         onDuplicate={() => handleDuplicate(workflow)}
                         onDelete={() => setWorkflowToDelete(workflow)}
                       />

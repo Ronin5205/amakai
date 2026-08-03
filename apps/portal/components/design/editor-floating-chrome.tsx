@@ -15,7 +15,9 @@ import { DraftSaveStatus } from "@/components/design/draft-save-status"
 import { WorkflowTitleEditor } from "@/components/design/workflow-title-editor"
 import type { ValidationStatus } from "@/hooks/use-workflow-validation"
 import type { DraftSaveStatus as SaveStatus } from "@/hooks/use-workflow-auto-save"
+import { getDeployDisabledReason } from "@/lib/design/deploy-disabled-reason"
 import { Button } from "@amakai/shared/components/ui/button"
+import { Badge } from "@amakai/shared/components/ui/badge"
 import {
   Tooltip,
   TooltipContent,
@@ -31,6 +33,8 @@ export interface EditorFloatingChromeProps {
   deployMessage?: string | null
   validationStatus?: ValidationStatus
   isDeployable?: boolean
+  deployDisabledReason?: string | null
+  hasUnpublishedChanges?: boolean
   isValidating?: boolean
   onNameChange: (name: string) => void
   onOpenResources: () => void
@@ -49,6 +53,8 @@ export function EditorFloatingChrome({
   deployMessage,
   validationStatus = "idle",
   isDeployable = false,
+  deployDisabledReason,
+  hasUnpublishedChanges = false,
   isValidating = false,
   onNameChange,
   onOpenResources,
@@ -58,6 +64,9 @@ export function EditorFloatingChrome({
   onDeploy,
 }: EditorFloatingChromeProps) {
   const message = actionMessage ?? deployMessage
+  const resolvedDeployDisabledReason =
+    deployDisabledReason ??
+    getDeployDisabledReason(isDeployable, validationStatus)
 
   return (
     <>
@@ -79,6 +88,11 @@ export function EditorFloatingChrome({
               onNameChange={onNameChange}
             />
             <DraftSaveStatus status={saveStatus} error={saveError} />
+            {hasUnpublishedChanges ? (
+              <Badge variant="outline" className="gap-1.5 font-normal">
+                Unpublished changes
+              </Badge>
+            ) : null}
           </div>
         </div>
 
@@ -171,21 +185,25 @@ export function EditorFloatingChrome({
           <Tooltip>
             <TooltipTrigger
               render={
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!isDeployable}
-                  onClick={onDeploy}
-                />
+                <span className="inline-flex">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!isDeployable}
+                    onClick={onDeploy}
+                  >
+                    <RocketLaunchIcon data-icon="inline-start" />
+                    Deploy
+                  </Button>
+                </span>
               }
-            >
-              <RocketLaunchIcon data-icon="inline-start" />
-              Deploy
-            </TooltipTrigger>
+            />
             <TooltipContent side="bottom">
               {isDeployable
-                ? "Deploy validated workflow"
-                : "Validate the workflow before deploying"}
+                ? hasUnpublishedChanges
+                  ? "Deploy unpublished changes to production"
+                  : "Deploy validated workflow"
+                : resolvedDeployDisabledReason}
             </TooltipContent>
           </Tooltip>
         </div>

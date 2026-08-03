@@ -3,6 +3,7 @@ import type {
   LiveWorkflow,
   LiveWorkflowDetail,
 } from "@/lib/domain/deployment"
+import { workflowGraphSignature } from "@/lib/data/workflow-graph-signature"
 import {
   mapWorkflowRow,
   type WorkflowGraphPayload,
@@ -89,11 +90,17 @@ export async function deployWorkflowDraft(
   const graph = (workflow as WorkflowRow).graph
   const deployedAt = new Date().toISOString()
 
-  await auth.supabase
+  const { error: deleteVersionsError } = await auth.supabase
     .from("workflow_versions")
     .delete()
     .eq("workflow_id", workflowId)
     .eq("user_id", auth.userId)
+
+  if (deleteVersionsError) {
+    throw new Error(
+      deleteVersionsError.message ?? "Failed to replace the live workflow version."
+    )
+  }
 
   const { data: versionRow, error: versionError } = await auth.supabase
     .from("workflow_versions")
@@ -181,6 +188,7 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
     .select("workflow_id, created_at, graph")
     .eq("user_id", auth.userId)
     .in("workflow_id", workflowIds)
+    .order("created_at", { ascending: false })
 
   const deployedAtByWorkflowId = new Map<string, string>()
   const versionGraphByWorkflowId = new Map<string, WorkflowGraphPayload>()
@@ -194,9 +202,13 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
     }
   }
 
-  return workflows.map((workflow) => {
+  return workflows.flatMap((workflow) => {
     const versionGraph = versionGraphByWorkflowId.get(workflow.id)
-    const nodes = versionGraph?.nodes ?? []
+    if (!versionGraph) {
+      return []
+    }
+
+    const nodes = versionGraph.nodes ?? []
     const triggerNode = nodes.find((node) => node.kind === "trigger")
     const triggerType =
       typeof triggerNode?.config?.triggerType === "string"
@@ -206,9 +218,8 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
     return {
       id: workflow.id,
       name: workflow.name,
-      deployedAt:
-        deployedAtByWorkflowId.get(workflow.id) ?? workflow.updated_at,
-      updatedAt: workflow.updated_at,
+      deployedAt: deployedAtByWorkflowId.get(workflow.id) ?? workflow.updated_at,
+      updatedAt: deployedAtByWorkflowId.get(workflow.id) ?? workflow.updated_at,
       health: "healthy" as const,
       nodeCount: nodes.length,
       triggerType,
@@ -216,14 +227,19 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
   })
 }
 
-async function getPublishedWorkflowGraph(
+type PublishedWorkflowVersion = {
+  graph: WorkflowGraphPayload
+  createdAt: string
+}
+
+async function getPublishedWorkflowVersion(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   workflowId: string
-): Promise<WorkflowGraphPayload | null> {
+): Promise<PublishedWorkflowVersion | null> {
   const { data: version } = await supabase
     .from("workflow_versions")
-    .select("graph")
+    .select("graph, created_at")
     .eq("workflow_id", workflowId)
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -234,7 +250,19 @@ async function getPublishedWorkflowGraph(
     return null
   }
 
-  return version.graph as WorkflowGraphPayload
+  return {
+    graph: version.graph as WorkflowGraphPayload,
+    createdAt: version.created_at,
+  }
+}
+
+export async function getPublishedWorkflowGraph(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  workflowId: string
+): Promise<WorkflowGraphPayload | null> {
+  const version = await getPublishedWorkflowVersion(supabase, userId, workflowId)
+  return version?.graph ?? null
 }
 
 export async function getLiveWorkflow(
@@ -257,35 +285,68 @@ export async function getLiveWorkflow(
     return null
   }
 
-  const graph =
-    (await getPublishedWorkflowGraph(auth.supabase, auth.userId, workflowId)) ??
-    ((workflow as WorkflowRow).graph as WorkflowGraphPayload)
+  const publishedVersion = await getPublishedWorkflowVersion(
+    auth.supabase,
+    auth.userId,
+    workflowId
+  )
+
+  if (!publishedVersion) {
+    return null
+  }
 
   const mapped = mapWorkflowRow(workflow as WorkflowRow)
-  const triggerNode = mapped.nodes.find((node) => node.kind === "trigger")
+  const nodes = publishedVersion.graph.nodes ?? []
+  const edges = publishedVersion.graph.edges ?? []
+  const triggerNode = nodes.find((node) => node.kind === "trigger")
   const triggerType =
     typeof triggerNode?.config?.triggerType === "string"
       ? triggerNode.config.triggerType
       : undefined
 
-  const { data: version } = await auth.supabase
-    .from("workflow_versions")
-    .select("created_at")
-    .eq("workflow_id", workflowId)
-    .eq("user_id", auth.userId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
   return {
     id: mapped.id,
     name: mapped.name,
-    deployedAt: version?.created_at ?? mapped.updatedAt,
-    updatedAt: mapped.updatedAt,
+    deployedAt: publishedVersion.createdAt,
+    updatedAt: publishedVersion.createdAt,
     health: "healthy",
-    nodeCount: mapped.nodes.length,
+    nodeCount: nodes.length,
     triggerType,
-    nodes: graph.nodes ?? mapped.nodes,
-    edges: graph.edges ?? mapped.edges ?? [],
+    nodes,
+    edges,
+  }
+}
+
+export async function getWorkflowPublishState(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  workflow: WorkflowRow
+): Promise<{
+  publishedAt: string | null
+  publishedGraphSignature: string | null
+  hasUnpublishedChanges: boolean
+}> {
+  const publishedVersion = await getPublishedWorkflowVersion(
+    supabase,
+    userId,
+    workflow.id
+  )
+
+  if (!publishedVersion) {
+    return {
+      publishedAt: null,
+      publishedGraphSignature: null,
+      hasUnpublishedChanges: false,
+    }
+  }
+
+  const draftGraph = workflow.graph as WorkflowGraphPayload
+  const publishedGraphSignature = workflowGraphSignature(publishedVersion.graph)
+  const draftGraphSignature = workflowGraphSignature(draftGraph)
+
+  return {
+    publishedAt: publishedVersion.createdAt,
+    publishedGraphSignature,
+    hasUnpublishedChanges: draftGraphSignature !== publishedGraphSignature,
   }
 }

@@ -2,41 +2,36 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
 
-import { OAuthButtons } from "@/components/auth/oauth-buttons"
+import { getAuthCallbackUrl } from "@/lib/auth/providers"
 import { portalRoutes } from "@/lib/content"
 import { createClient } from "@/utils/supabase/client"
 import { Button } from "@amakai/shared/components/ui/button"
 import { Input } from "@amakai/shared/components/ui/input"
 
-interface SignInFormProps {
+interface ForgotPasswordFormProps {
   crossLinkPrompt: string
   crossLinkLabel: string
 }
 
-export function SignInForm({
+export function ForgotPasswordForm({
   crossLinkPrompt,
   crossLinkLabel,
-}: SignInFormProps) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const nextPath = searchParams.get("next") ?? "/"
-
+}: ForgotPasswordFormProps) {
   const [email, setEmail] = React.useState("")
-  const [password, setPassword] = React.useState("")
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = React.useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsSubmitting(true)
     setErrorMessage(null)
+    setSuccessMessage(null)
 
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: getAuthCallbackUrl(portalRoutes.resetPassword),
     })
 
     if (error) {
@@ -45,21 +40,21 @@ export function SignInForm({
       return
     }
 
-    router.push(nextPath)
-    router.refresh()
+    setSuccessMessage(
+      "Check your email for a password reset link. It may take a few minutes to arrive."
+    )
+    setIsSubmitting(false)
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <OAuthButtons nextPath={nextPath} />
-
       <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="sign-in-email" className="text-xs font-medium">
+          <label htmlFor="forgot-password-email" className="text-xs font-medium">
             Email
           </label>
           <Input
-            id="sign-in-email"
+            id="forgot-password-email"
             type="email"
             autoComplete="email"
             required
@@ -69,44 +64,27 @@ export function SignInForm({
           />
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor="sign-in-password" className="text-xs font-medium">
-              Password
-            </label>
-            <Link
-              href={portalRoutes.forgotPassword}
-              className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-            >
-              Forgot password?
-            </Link>
-          </div>
-          <Input
-            id="sign-in-password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="••••••••"
-          />
-        </div>
-
         {errorMessage ? (
           <p className="text-xs text-destructive" role="alert">
             {errorMessage}
           </p>
         ) : null}
 
+        {successMessage ? (
+          <p className="text-xs text-muted-foreground" role="status">
+            {successMessage}
+          </p>
+        ) : null}
+
         <Button type="submit" size="lg" disabled={isSubmitting}>
-          {isSubmitting ? "Signing in…" : "Sign in with email"}
+          {isSubmitting ? "Sending link…" : "Send reset link"}
         </Button>
       </form>
 
       <p className="text-center text-xs text-muted-foreground">
         {crossLinkPrompt}{" "}
         <Link
-          href={portalRoutes.signUp}
+          href={portalRoutes.signIn}
           className="text-foreground underline underline-offset-4"
         >
           {crossLinkLabel}

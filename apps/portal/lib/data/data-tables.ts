@@ -1,5 +1,11 @@
 import type { DataTable, DataTableRow } from "@/lib/domain/data-table"
 import {
+  assertDataTableLimitNotReached,
+  buildDataTableLimitState,
+  countUserDataTables,
+  type DataTableLimitState,
+} from "@/lib/data/table-limits"
+import {
   isPersistedDataTableId,
   mapDataTableRow,
   mapDataTableRowRecord,
@@ -134,6 +140,16 @@ export async function listDataTables(): Promise<DataTable[]> {
   return tables
 }
 
+export async function getDataTableLimitState(): Promise<DataTableLimitState | null> {
+  const auth = await getAuthenticatedUserId()
+  if (!auth) {
+    return null
+  }
+
+  const count = await countUserDataTables(auth.supabase, auth.userId)
+  return buildDataTableLimitState(count)
+}
+
 export async function listDataTableSummaries() {
   const auth = await getAuthenticatedUserId()
   if (!auth) {
@@ -213,6 +229,8 @@ export async function createDataTable(
   if (!auth) {
     throw new Error("Sign in to create tables.")
   }
+
+  await assertDataTableLimitNotReached(auth.supabase, auth.userId)
 
   const uniqueName = await generateUniqueTableName(
     auth.supabase,
@@ -320,6 +338,8 @@ export async function duplicateDataTable(tableId: string): Promise<DataTable> {
   if (!source) {
     throw new Error("Table not found.")
   }
+
+  await assertDataTableLimitNotReached(auth.supabase, auth.userId)
 
   const uniqueName = await generateUniqueTableName(
     auth.supabase,

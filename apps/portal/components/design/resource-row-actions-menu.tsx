@@ -15,6 +15,7 @@ export interface ResourceRowActionsMenuProps {
   onDelete: () => void
   isDuplicating?: boolean
   isDeleting?: boolean
+  duplicateDisabled?: boolean
   disabled?: boolean
 }
 
@@ -23,6 +24,7 @@ export function ResourceRowActionsMenu({
   onDelete,
   isDuplicating = false,
   isDeleting = false,
+  duplicateDisabled = false,
   disabled = false,
 }: ResourceRowActionsMenuProps) {
   const isBusy = isDuplicating || isDeleting
@@ -42,7 +44,10 @@ export function ResourceRowActionsMenu({
         <DotsThreeIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem disabled={isBusy} onClick={onDuplicate}>
+        <DropdownMenuItem
+          disabled={isBusy || duplicateDisabled}
+          onClick={onDuplicate}
+        >
           <CopyIcon />
           {isDuplicating ? "Duplicating…" : "Duplicate"}
         </DropdownMenuItem>

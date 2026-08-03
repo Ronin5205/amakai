@@ -1,4 +1,11 @@
 import type { Workflow } from "@/lib/domain/workflow"
+import { getWorkflowPublishState } from "@/lib/data/deployments"
+import {
+  assertWorkflowLimitNotReached,
+  buildWorkflowLimitState,
+  countUserWorkflows,
+  type WorkflowLimitState,
+} from "@/lib/data/workflow-limits"
 import {
   assertUniqueWorkflowName,
   cloneWorkflowGraph,
@@ -47,6 +54,16 @@ export async function listWorkflows(): Promise<Workflow[]> {
   return (data as WorkflowRow[]).map(mapWorkflowRow)
 }
 
+export async function getWorkflowLimitState(): Promise<WorkflowLimitState | null> {
+  const auth = await getAuthenticatedUserId()
+  if (!auth) {
+    return null
+  }
+
+  const count = await countUserWorkflows(auth.supabase, auth.userId)
+  return buildWorkflowLimitState(count)
+}
+
 export async function getWorkflowDraft(workflowId?: string): Promise<Workflow> {
   const auth = await getAuthenticatedUserId()
   if (!auth) {
@@ -65,7 +82,17 @@ export async function getWorkflowDraft(workflowId?: string): Promise<Workflow> {
       return createEmptyDraftWorkflow()
     }
 
-    return mapWorkflowRow(data as WorkflowRow)
+    const row = data as WorkflowRow
+    const publishState = await getWorkflowPublishState(
+      auth.supabase,
+      auth.userId,
+      row
+    )
+
+    return {
+      ...mapWorkflowRow(row),
+      ...publishState,
+    }
   }
 
   return createEmptyDraftWorkflow()
@@ -108,6 +135,7 @@ export async function saveWorkflowDraft(workflow: Workflow): Promise<Workflow> {
   }
 
   await assertUniqueWorkflowName(auth.supabase, auth.userId, payload.name)
+  await assertWorkflowLimitNotReached(auth.supabase, auth.userId)
 
   const { data, error } = await auth.supabase
     .from("workflows")
@@ -130,6 +158,8 @@ export async function createWorkflowDraft(name?: string): Promise<Workflow> {
   if (!auth) {
     throw new Error("Sign in to create workflows.")
   }
+
+  await assertWorkflowLimitNotReached(auth.supabase, auth.userId)
 
   const uniqueName = await generateUniqueWorkflowName(
     auth.supabase,
@@ -196,6 +226,8 @@ export async function duplicateWorkflow(workflowId: string): Promise<Workflow> {
   if (sourceError || !source) {
     throw new Error("Workflow not found.")
   }
+
+  await assertWorkflowLimitNotReached(auth.supabase, auth.userId)
 
   const mapped = mapWorkflowRow(source as WorkflowRow)
   const uniqueName = await generateUniqueWorkflowName(

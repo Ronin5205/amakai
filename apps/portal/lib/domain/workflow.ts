@@ -121,4 +121,7 @@ export type Workflow = {
   nodes: WorkflowNode[]
   edges?: WorkflowEdge[]
   updatedAt: string
+  publishedAt?: string | null
+  publishedGraphSignature?: string | null
+  hasUnpublishedChanges?: boolean
 }

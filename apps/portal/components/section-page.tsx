@@ -8,6 +8,8 @@ export interface SectionPageProps {
   description?: React.ReactNode
   actions?: React.ReactNode
   children?: React.ReactNode
+  align?: "start" | "center"
+  className?: string
 }
 
 export function SectionPage({
@@ -16,24 +18,33 @@ export function SectionPage({
   description,
   actions,
   children,
+  align = "start",
+  className,
 }: SectionPageProps) {
   const hasChildren = Boolean(children)
 
   return (
     <div
       className={cn(
-        "flex flex-col",
-        hasChildren ? "max-w-none gap-6" : "max-w-2xl gap-3"
+        "flex w-full flex-col",
+        hasChildren ? "max-w-none gap-6" : "max-w-2xl gap-3",
+        className
       )}
     >
       <div
         className={cn(
           actions
             ? "flex items-start justify-between gap-4"
-            : "flex flex-col gap-3"
+            : "flex flex-col gap-3",
+          align === "center" && !actions && "items-center text-center"
         )}
       >
-        <div className="flex min-w-0 flex-col gap-3">
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-3",
+            align === "center" && !actions && "items-center"
+          )}
+        >
           {eyebrow ? (
             <span className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
               {eyebrow}
@@ -43,7 +54,12 @@ export function SectionPage({
             {title}
           </h1>
           {description ? (
-            <p className="text-sm/relaxed text-muted-foreground">
+            <p
+              className={cn(
+                "text-sm/relaxed text-muted-foreground",
+                align === "center" && "max-w-2xl"
+              )}
+            >
               {description}
             </p>
           ) : null}

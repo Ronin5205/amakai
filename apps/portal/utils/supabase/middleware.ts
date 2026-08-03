@@ -7,6 +7,8 @@ import { requireSupabaseEnv } from "@/utils/supabase/env"
 const publicPathPrefixes = [
   portalRoutes.signIn,
   portalRoutes.signUp,
+  portalRoutes.forgotPassword,
+  portalRoutes.resetPassword,
   "/auth",
 ] as const
 
