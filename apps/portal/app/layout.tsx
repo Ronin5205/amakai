@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next"
 import { Instrument_Sans, Noto_Sans } from "next/font/google"
+import Script from "next/script"
 
+import { ThemeBootstrap } from "@amakai/shared/components/theme-bootstrap"
 import { siteConfig } from "@amakai/shared/lib/site-config"
 import { themeInitScript } from "@amakai/shared/lib/theme"
 import { cn } from "@amakai/shared/lib/utils"
@@ -52,10 +54,13 @@ export default function RootLayout({
         "font-sans"
       )}
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-      </head>
-      <body>{children}</body>
+      <body>
+        <Script id="amakai-theme-init" strategy="beforeInteractive">
+          {themeInitScript}
+        </Script>
+        <ThemeBootstrap />
+        {children}
+      </body>
     </html>
   )
 }

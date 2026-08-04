@@ -32,9 +32,14 @@ function runWithThemeTransition(apply: () => void) {
 }
 
 /**
- * Runs in `<head>` before first paint, so the correct theme is already on
- * `<html>` by the time the body renders. Kept dependency-free and wrapped in a
- * try/catch because `localStorage` throws in locked-down browsers.
+ * Runs before first paint via `next/script` `beforeInteractive`, so the
+ * correct theme is already on `<html>` by the time the body renders. Kept
+ * dependency-free and wrapped in a try/catch because `localStorage` throws in
+ * locked-down browsers.
+ *
+ * Prefer injecting this with `<Script id="amakai-theme-init" strategy="beforeInteractive">`
+ * rather than a raw `<script>` in JSX — React 19 skips executing script tags
+ * rendered inside components on the client.
  */
 export const themeInitScript = `(function(){try{var k="${THEME_STORAGE_KEY}",s=localStorage.getItem(k),t=s==="light"||s==="dark"?s:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"),r=document.documentElement;r.classList.toggle("dark",t==="dark");r.style.colorScheme=t;}catch(e){}})();`
 

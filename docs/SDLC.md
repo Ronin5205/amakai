@@ -871,7 +871,7 @@ This appendix tracks what the **client portal** (`apps/portal`) implements today
 | Monitoring | Implemented — adaptive metrics from production runs per live workflow |
 | Logs and alerts | Implemented — grouped by execution; alerts via log filter + notification bell |
 | Data tables (design) | Implemented — Supabase-backed |
-| Resources, billing, community | UI stubs only |
+| Resources, billing, community | Community stub; Stripe Checkout + Customer Portal (single gateway, webhook entitlements) |
 | Multi-tenant organizations | Not implemented — rows scoped by `user_id` |
 | Distributed workflow engine | Not implemented — SDLC §7–10 services are future work |
 | AI planning pipeline | Stub accessors only (`lib/data/planning.ts`) |

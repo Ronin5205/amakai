@@ -42,6 +42,7 @@ export default async function Page({ params }) {
 | `templates.ts` | `listTemplates` | In-memory catalog templates | `template` |
 | `planning.ts` | `getPlanningStages`, `getSampleAnalysis`, `getClarificationQuestions` | Stubs (empty) | `planning` |
 | `secrets.ts` | CRUD, OAuth state, encrypted payloads | Supabase | `secret` |
+| `billing.ts` | Billing profile, plan, Stripe customer/subscription sync | Supabase + Stripe | `billing` |
 | `trigger-subscriptions.ts` | `syncTriggerSubscriptions`, webhook/email subscription lookup | Supabase | — |
 | `inbound-runs.ts` | `enqueueAndProcessInboundRun` (webhooks, email push) | Supabase | — |
 
@@ -50,6 +51,7 @@ Supporting logic (not accessors):
 | Location | Role |
 |----------|------|
 | `lib/validation/` | Zod schemas and limits for names, tables, workflow node config |
+| `lib/stripe/` | Sole Stripe gateway (`gateway.ts`), ID crypto, public exports |
 | `lib/operate/production-execution-insights.ts` | Parse run results → logs, monitoring metrics, trigger input |
 | `lib/operate/workflow-monitoring-profile.ts` | Adaptive monitoring sections from workflow graph + runs |
 | `lib/operate/execution-log-retention.ts` | `PRODUCTION_EXECUTION_RETENTION_LIMIT` (20 runs per workflow) |
@@ -67,6 +69,10 @@ Apply migrations in `supabase/migrations/` (oldest first):
 | `20260802150000_workflow_executions.sql` | Production run history |
 | `20260802153000_workflow_executions_delete_policy.sql` | Delete policy for retention pruning |
 | `20260803190000_secrets_and_triggers.sql` | Secrets vault, OAuth states, trigger subscriptions |
+| `20260804200000_user_billing_profiles.sql` | Billing plan + Stripe customer linkage |
+| `20260804210000_billing_stripe_customers.sql` | Drop local address columns; add Stripe ids |
+| `20260804220000_billing_security_hardening.sql` | Webhook idempotency; encrypted Stripe refs; read-only RLS |
+| `20260804230000_billing_cancel_at_period_end.sql` | Cancel-at-period-end + period end for subscription UI |
 
 ## Production execution flow
 

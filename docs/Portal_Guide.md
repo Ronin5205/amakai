@@ -12,7 +12,7 @@ Operational reference for the Amakai client portal (`apps/portal`). For product 
 | **Operate** | `/operate/live-workflows`, `/operate/logs` | Monitor live workflows; grouped execution logs |
 | **Resources** | `/resources/secrets` | Encrypted secrets vault + Connect Gmail / Outlook OAuth |
 | **Community** | `/community` | Stub |
-| **Administration** | `/admin/billing`, `/settings` | Stub |
+| **Administration** | `/admin/billing`, `/settings` | Billing (Free/Pro Checkout); Settings (profile + Stripe portal manage/unsubscribe) |
 
 Legacy redirects (bookmarks):
 
@@ -22,6 +22,24 @@ Legacy redirects (bookmarks):
 | `/operate/alerts` | `/operate/logs?filter=alerts` |
 | `/operate/monitoring` | `/operate/live-workflows` |
 | `/operate/executions` | `/operate/live-workflows` |
+| `/admin/billing/pro` | `/admin/billing` |
+
+## Billing (Stripe)
+
+| Surface | Route | Behavior |
+|---------|-------|----------|
+| **Plans / upgrade** | `/admin/billing` | Free vs Pro; Upgrade opens Stripe Checkout |
+| **Manage / cancel** | `/settings` → Billing | Opens Stripe Customer Portal in a new tab |
+| **Webhook** | `POST /api/stripe/webhook` | Sole Stripe → Amakai ingress; signature required in every env |
+
+Entitlements:
+
+- Plan is **never** set from the browser. Only the Stripe gateway writes plan after verified Checkout/webhook sync.
+- Pro requires an **active/trialing** subscription that includes `STRIPE_PRO_PRICE_ID`.
+- Cancel-at-period-end keeps Pro until the period ends; UI shows **Active until &lt;date&gt;** (not “renews”).
+- After Checkout return, Billing auto-refreshes until Pro syncs, then shows congratulations.
+- Authenticated users have **read-only** RLS on `user_billing_profiles`; Stripe IDs are AES-GCM encrypted at rest (`SECRETS_ENCRYPTION_KEY`).
+- All Stripe SDK usage lives in `lib/stripe/gateway.ts` only.
 
 ## Workflow lifecycle
 
@@ -128,14 +146,20 @@ Production and testing share `lib/engine/playground.ts`:
 | Email adapters | `lib/integrations/email/adapters.ts` |
 | Inbound runs / webhooks | `lib/data/inbound-runs.ts`, `app/api/webhooks/[token]/route.ts` |
 | Input validation (Zod) | `lib/validation/` |
+| Billing / plans | `lib/stripe/gateway.ts` (sole Stripe SDK entry), `lib/data/billing.ts`, `components/billing/`, `app/api/stripe/webhook` |
 | Editor | `components/design/design-hub-view.tsx` |
 | Views | `components/views/*` |
 
 ## Local setup
 
-1. Copy `apps/portal/.env.example` → `apps/portal/.env.local` (Supabase keys).
+1. Copy `apps/portal/.env.example` → `apps/portal/.env.local` (Supabase keys; optional Stripe keys for billing).
 2. Apply Supabase migrations (see [data layer README](../apps/portal/lib/data/README.md)).
 3. `npm run dev:portal` → [http://localhost:3001](http://localhost:3001)
+4. Optional Stripe:
+   - Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `SECRETS_ENCRYPTION_KEY` (encrypts Stripe IDs at rest).
+   - Enable **Customer Portal** in the Stripe Dashboard.
+   - Forward webhooks: `stripe listen --forward-to localhost:3001/api/stripe/webhook` (signature verification is required even in local/dev — never bypass it).
+   - All Stripe API access goes through `lib/stripe/gateway.ts` only. Plan upgrades require a verified webhook/reconcile with the configured `STRIPE_PRO_PRICE_ID`; clients cannot set plan via the Data API (read-only RLS).
 
 ## Agent notes
 

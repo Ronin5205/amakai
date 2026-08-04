@@ -2,7 +2,6 @@ import type { Icon } from "@phosphor-icons/react"
 import {
   ClockCounterClockwiseIcon,
   CreditCardIcon,
-  DotsThreeIcon,
   FlaskIcon,
   GearIcon,
   HouseIcon,
@@ -27,7 +26,6 @@ export type UserMenuAction = {
   label: string
   href: string
   icon: Icon
-  disabled?: boolean
 }
 
 export const portalNavigation: PortalNavItem[] = [
@@ -111,12 +109,6 @@ export const userMenuActions = {
     href: "/settings",
     icon: GearIcon,
   },
-  extras: {
-    label: "Extras",
-    href: "#",
-    icon: DotsThreeIcon,
-    disabled: true,
-  },
 } satisfies Record<string, UserMenuAction>
 
 export const themeMenuOptions = [
@@ -192,6 +184,14 @@ export function getBreadcrumbs(pathname: string): BreadcrumbCrumb[] {
     return crumbs
   }
 
+  if (pathname === "/admin/billing/pro") {
+    return [
+      { label: "Administration" },
+      { label: "Billing", href: "/admin/billing" },
+      { label: "Pro", href: pathname },
+    ]
+  }
+
   const item = getNavItemByHref(pathname)
   if (!item) {
     const label =
@@ -260,6 +260,13 @@ export function isNavItemActive(
 
     if (hrefPath === "/production/history") {
       return pathname === "/production/history"
+    }
+
+    if (hrefPath === "/admin/billing") {
+      return (
+        pathname === "/admin/billing" ||
+        pathname.startsWith("/admin/billing/")
+      )
     }
 
     return true

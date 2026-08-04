@@ -1,8 +1,10 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
+  CreditCardIcon,
   DatabaseIcon,
   KeyIcon,
   TreeStructureIcon,
@@ -12,6 +14,7 @@ import {
 import { ConfirmDestructiveDialog } from "@/components/settings/confirm-destructive-dialog"
 import { ThemePreferencePicker } from "@/components/settings/theme-preference-picker"
 import { usePortalSession } from "@/hooks/use-portal-session"
+import { createStripePortalSessionAction } from "@/lib/actions/billing-actions"
 import {
   deleteAccountAction,
   deleteAllDataTablesAction,
@@ -20,6 +23,10 @@ import {
   deleteAllWorkflowsAction,
 } from "@/lib/actions/settings-actions"
 import { portalRoutes } from "@/lib/content"
+import {
+  formatSubscriptionLabel,
+  planDisplayName,
+} from "@/lib/domain/billing"
 import { formatDateTime } from "@/lib/format"
 import type { UserProfileSummary } from "@/lib/domain/settings"
 import { getUsernameInitials } from "@/lib/auth/user"
@@ -47,6 +54,7 @@ type DestructiveAction =
 
 export interface SettingsViewProps {
   profile: UserProfileSummary
+  stripeConfigured: boolean
 }
 
 function ProfileField({
@@ -64,7 +72,10 @@ function ProfileField({
   )
 }
 
-export function SettingsView({ profile: initialProfile }: SettingsViewProps) {
+export function SettingsView({
+  profile: initialProfile,
+  stripeConfigured,
+}: SettingsViewProps) {
   const router = useRouter()
   const { signOut } = usePortalSession()
   const [profile, setProfile] = React.useState(initialProfile)
@@ -72,6 +83,7 @@ export function SettingsView({ profile: initialProfile }: SettingsViewProps) {
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null)
   const [activeAction, setActiveAction] = React.useState<DestructiveAction>(null)
   const [isConfirming, setIsConfirming] = React.useState(false)
+  const [isOpeningPortal, setIsOpeningPortal] = React.useState(false)
 
   React.useEffect(() => {
     setProfile(initialProfile)
@@ -198,6 +210,22 @@ export function SettingsView({ profile: initialProfile }: SettingsViewProps) {
     router.refresh()
   }
 
+  const handleOpenBillingPortal = async () => {
+    setIsOpeningPortal(true)
+    setError(null)
+    setSuccessMessage(null)
+
+    const result = await createStripePortalSessionAction()
+    setIsOpeningPortal(false)
+
+    if ("error" in result) {
+      setError(result.error)
+      return
+    }
+
+    window.open(result.url, "_blank", "noopener,noreferrer")
+  }
+
   return (
     <div className="flex w-full flex-col gap-8">
       {error ? (
@@ -255,12 +283,86 @@ export function SettingsView({ profile: initialProfile }: SettingsViewProps) {
               value={formatDateTime(profile.createdAt)}
             />
             <ProfileField
+              label="Plan"
+              value={planDisplayName(profile.plan)}
+            />
+            <ProfileField
               label="Workflows"
               value={profile.workflowCount.toString()}
             />
             <ProfileField label="Tables" value={profile.tableCount.toString()} />
             <ProfileField label="Secrets" value={profile.secretCount.toString()} />
           </dl>
+        </CardContent>
+      </Card>
+
+      <Card id="billing">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCardIcon className="size-4" />
+            Billing
+          </CardTitle>
+          <CardDescription>
+            Unsubscribe, update payment methods, or change billing details in
+            Stripe. Plan upgrades happen on Billing.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <dl className="flex flex-col gap-3 text-sm">
+            <ProfileField
+              label="Current plan"
+              value={planDisplayName(profile.plan)}
+            />
+            <ProfileField
+              label="Subscription"
+              value={formatSubscriptionLabel({
+                plan: profile.plan,
+                subscriptionStatus: profile.subscriptionStatus,
+                cancelAtPeriodEnd: profile.cancelAtPeriodEnd,
+                currentPeriodEnd: profile.currentPeriodEnd,
+              })}
+            />
+          </dl>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            {profile.plan !== "pro" ? (
+              <Button
+                render={<Link href="/admin/billing" />}
+                nativeButton={false}
+              >
+                Upgrade to Pro
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              disabled={!stripeConfigured || isOpeningPortal}
+              onClick={handleOpenBillingPortal}
+            >
+              {isOpeningPortal
+                ? "Opening Stripe…"
+                : profile.cancelAtPeriodEnd
+                  ? "Resume or manage in Stripe"
+                  : profile.plan === "pro"
+                    ? "Unsubscribe / manage billing"
+                    : "Manage billing details"}
+            </Button>
+          </div>
+
+          {!stripeConfigured ? (
+            <p className="text-sm text-muted-foreground">
+              Stripe is not configured in this environment yet.
+            </p>
+          ) : profile.cancelAtPeriodEnd ? (
+            <p className="text-sm text-muted-foreground">
+              Your Pro plan stays available until the end of the current billing
+              period. You can resume or change this in Stripe.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Opens Stripe&apos;s secure portal to cancel Pro, update cards, or
+              edit your billing address.
+            </p>
+          )}
         </CardContent>
       </Card>
 

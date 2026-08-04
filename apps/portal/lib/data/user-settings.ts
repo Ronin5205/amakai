@@ -1,4 +1,5 @@
 import { getUsername } from "@/lib/auth/user"
+import { getBillingProfileForUser } from "@/lib/data/billing"
 import type {
   DeleteUserDataResult,
   UserProfileSummary,
@@ -28,10 +29,11 @@ export async function getUserProfileSummary(): Promise<UserProfileSummary | null
     return null
   }
 
-  const [workflowCount, tableCount, secretCount] = await Promise.all([
+  const [workflowCount, tableCount, secretCount, billing] = await Promise.all([
     countUserWorkflows(auth.supabase, auth.userId),
     countUserDataTables(auth.supabase, auth.userId),
     countUserSecrets(auth.supabase, auth.userId),
+    getBillingProfileForUser(auth.supabase, auth.userId),
   ])
 
   const displayName =
@@ -44,6 +46,11 @@ export async function getUserProfileSummary(): Promise<UserProfileSummary | null
     username: getUsername(auth.user),
     displayName,
     createdAt: auth.user.created_at,
+    plan: billing.plan,
+    hasStripeCustomer: billing.hasStripeCustomer,
+    subscriptionStatus: billing.subscriptionStatus,
+    cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
+    currentPeriodEnd: billing.currentPeriodEnd,
     workflowCount,
     tableCount,
     secretCount,

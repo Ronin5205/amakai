@@ -1,8 +1,21 @@
 export function formatDateTime(iso: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(iso))
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return "—"
+
+  // Explicit en-US parts (not dateStyle/timeStyle) so Node and browsers match.
+  // Avoids hydration mismatches like "2 Aug 2026, 10:02 pm" vs "Aug 2, 2026, 10:02 PM".
+  const day = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date)
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date)
+
+  return `${day}, ${time}`
 }
 
 export function formatDuration(ms?: number) {

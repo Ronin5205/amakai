@@ -5,12 +5,22 @@ import { SectionPage } from "@/components/section-page"
 import { SettingsView } from "@/components/settings/settings-view"
 import { getUserProfileSummary } from "@/lib/data/user-settings"
 import { portalRoutes } from "@/lib/content"
+import {
+  isStripeConfigured,
+  refreshCurrentUserSubscriptionFromStripe,
+} from "@/lib/stripe"
 
 export const metadata: Metadata = {
   title: "Settings",
 }
 
 export default async function SettingsPage() {
+  try {
+    await refreshCurrentUserSubscriptionFromStripe()
+  } catch {
+    // Keep rendering with stored billing state if Stripe is briefly unreachable.
+  }
+
   const profile = await getUserProfileSummary()
 
   if (!profile) {
@@ -24,9 +34,12 @@ export default async function SettingsPage() {
           align="center"
           eyebrow="Administration"
           title="Settings"
-          description="Manage your profile, appearance, and account data."
+          description="Manage your profile, billing, appearance, and account data."
         >
-          <SettingsView profile={profile} />
+          <SettingsView
+            profile={profile}
+            stripeConfigured={isStripeConfigured()}
+          />
         </SectionPage>
       </div>
     </div>

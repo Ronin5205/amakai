@@ -22,10 +22,13 @@ export function ThemeToggle({
   onClick,
   ...props
 }: ThemeToggleProps) {
-  // Resolves to "light" on the server and to the real theme when the
-  // initializer runs again on the client at hydration. Nothing below renders
-  // the value, so the two passes cannot disagree.
-  const [theme, setThemeState] = React.useState<Theme>(resolveInitialTheme)
+  // Resolves to "light" on the server. Sync to the real theme after mount so
+  // the toggle inverts the applied theme, not a stale SSR default.
+  const [theme, setThemeState] = React.useState<Theme>("light")
+
+  React.useEffect(() => {
+    setThemeState(resolveInitialTheme())
+  }, [])
 
   return (
     <Button

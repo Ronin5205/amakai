@@ -49,12 +49,16 @@ const themeIcons = {
 export function UserMenu() {
   const router = useRouter()
   const { user, username, isSignedIn, isLoading, signOut } = usePortalSession()
-  const [preference, setPreference] = React.useState<ThemePreference>(
-    getThemePreference
-  )
+  // Default to "system" on both server and first client paint so hydration
+  // matches; read the real preference after mount.
+  const [preference, setPreference] =
+    React.useState<ThemePreference>("system")
+
+  React.useEffect(() => {
+    setPreference(getThemePreference())
+  }, [])
 
   const SettingsIcon = userMenuActions.settings.icon
-  const ExtrasIcon = userMenuActions.extras.icon
   const initials = username ? getUsernameInitials(username) : "A"
 
   async function handleSignOut() {
@@ -127,11 +131,6 @@ export function UserMenu() {
         <DropdownMenuItem render={<Link href={userMenuActions.settings.href} />}>
           <SettingsIcon />
           {userMenuActions.settings.label}
-        </DropdownMenuItem>
-
-        <DropdownMenuItem disabled>
-          <ExtrasIcon />
-          {userMenuActions.extras.label}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />

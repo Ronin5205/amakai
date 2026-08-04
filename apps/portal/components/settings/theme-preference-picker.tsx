@@ -19,9 +19,14 @@ const themeIcons = {
 } as const
 
 export function ThemePreferencePicker({ className }: { className?: string }) {
-  const [preference, setPreference] = React.useState<ThemePreference>(
-    getThemePreference
-  )
+  // Default to "system" on both server and first client paint so hydration
+  // matches; read the real preference after mount.
+  const [preference, setPreference] =
+    React.useState<ThemePreference>("system")
+
+  React.useEffect(() => {
+    setPreference(getThemePreference())
+  }, [])
 
   return (
     <div className={cn("flex flex-wrap gap-2", className)}>
