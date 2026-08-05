@@ -136,8 +136,12 @@ export const COMPONENT_VARIANTS: ComponentCatalogItem[] = [
     id: "trigger.workflow",
     kind: "trigger",
     label: "Trigger",
-    description: "Starts the workflow. Cannot have incoming connections.",
+    description:
+      "Start a workflow manually, on a schedule, via webhook/signal, or from an external tool (email).",
     categoryId: "trigger",
+    defaultConfig: {
+      triggerMode: "manual",
+    },
   },
   {
     id: "action.code",
@@ -248,20 +252,6 @@ export const COMPONENT_VARIANTS: ComponentCatalogItem[] = [
     categoryId: "exception",
   },
   {
-    id: "trigger.external-tool",
-    kind: "trigger",
-    label: "External Tool Trigger",
-    description:
-      "Start a workflow from an external service (e.g. receive Gmail or Outlook email).",
-    categoryId: "integrations",
-    defaultConfig: {
-      service: "email",
-      provider: "gmail",
-      operation: "receive",
-      authMode: "secret",
-    },
-  },
-  {
     id: "integrations.external-tool",
     kind: "sequential",
     label: "External Tool",
@@ -273,18 +263,6 @@ export const COMPONENT_VARIANTS: ComponentCatalogItem[] = [
       provider: "gmail",
       operation: "send",
       authMode: "secret",
-    },
-  },
-  {
-    id: "trigger.api",
-    kind: "trigger",
-    label: "API Trigger",
-    description:
-      "Start a workflow from a webhook URL, schedule, manual run, or signal.",
-    categoryId: "integrations",
-    defaultConfig: {
-      triggerMode: "webhook",
-      authMode: "none",
     },
   },
   {

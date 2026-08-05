@@ -119,8 +119,8 @@ export function NotificationMenu() {
           </div>
         ) : recentAlerts.length === 0 ? (
           <div className="px-2 py-3 text-sm text-muted-foreground">
-            No alert-level logs yet. Warnings and errors from workflow runs
-            will appear here.
+            No alerts yet. Alert and error logs from workflow runs will appear
+            here.
           </div>
         ) : (
           recentAlerts.map((group) => {
@@ -158,7 +158,7 @@ export function NotificationMenu() {
         <DropdownMenuSeparator />
 
         <DropdownMenuItem render={<Link href="/operate/logs?filter=alerts" />}>
-          View all logs
+          View all alerts
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

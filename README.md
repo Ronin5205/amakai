@@ -111,7 +111,7 @@ flowchart TB
 | **Engine** | `lib/engine/` | Playground validation and production run execution |
 | **Pages** | `app/(app)/**/page.tsx` | Fetch via accessors, pass props to views |
 | **Views** | `components/views/` | Presentational; client state for filters/sheets only |
-| **Auth** | `utils/supabase/`, `proxy.ts` | Session refresh and OAuth (live) |
+| **Auth** | `utils/supabase/`, `middleware.ts` | Session refresh and OAuth (live) |
 
 ### Portal routes (implemented)
 
@@ -151,7 +151,7 @@ Requirements map to [docs/SDLC.md](docs/SDLC.md) section 3.
 
 ### Done
 
-- **Auth** — Supabase (Google, GitHub, email/password); [apps/portal/proxy.ts](apps/portal/proxy.ts)
+- **Auth** — Supabase (Google, GitHub, email/password); [apps/portal/middleware.ts](apps/portal/middleware.ts) + [utils/supabase/middleware.ts](apps/portal/utils/supabase/middleware.ts)
 - **Workflows** — drafts, save, deploy, duplicate; RLS on user-owned rows
 - **Data tables** — schema + row editor
 - **Production runs** — `startProductionRun`, logs, monitoring, retention
@@ -175,4 +175,4 @@ After wiring a feature to Supabase:
 - [ ] RLS policies tested for authenticated access
 - [ ] Data accessors return existing domain types
 - [ ] `npm run build:portal` passes
-- [ ] Auth proxy refreshes sessions on protected routes
+- [ ] Auth middleware refreshes sessions on protected routes; inbound `/api/webhooks/*` remains public

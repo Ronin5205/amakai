@@ -4,7 +4,7 @@ import type {
   DeleteUserDataResult,
   UserProfileSummary,
 } from "@/lib/domain/settings"
-import { countUserSecrets } from "@/lib/data/secrets"
+import { countUserSecrets, deleteAllSecrets } from "@/lib/data/secrets"
 import { countUserDataTables } from "@/lib/data/table-limits"
 import { countUserWorkflows } from "@/lib/data/workflow-limits"
 import { createClient } from "@/utils/supabase/server"
@@ -100,10 +100,12 @@ export async function deleteAllDataTables(): Promise<number> {
 export async function deleteAllUserData(): Promise<DeleteUserDataResult> {
   const deletedWorkflows = await deleteAllWorkflows()
   const deletedTables = await deleteAllDataTables()
+  const deletedSecrets = await deleteAllSecrets()
 
   return {
     deletedWorkflows,
     deletedTables,
+    deletedSecrets,
   }
 }
 

@@ -2,24 +2,39 @@ import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/utils/supabase/admin"
 import { processQueuedExecution } from "@/lib/data/inbound-runs"
+import { fireDueSchedules } from "@/lib/data/schedule-runs"
+
+function assertCronAuthorized(request: Request) {
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) {
+    return null
+  }
+
+  const provided =
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    request.headers.get("x-cron-secret") ??
+    ""
+
+  if (provided !== cronSecret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  return null
+}
 
 /**
- * MVP worker: process up to N queued workflow executions.
- * Call from cron or manually. Protect with CRON_SECRET when set.
+ * MVP worker tick: fire due schedule triggers, then process queued executions.
+ * Call every minute from cron. Protect with CRON_SECRET when set.
  */
 export async function POST(request: Request) {
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const provided =
-      request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
-      request.headers.get("x-cron-secret") ??
-      ""
-    if (provided !== cronSecret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+  const unauthorized = assertCronAuthorized(request)
+  if (unauthorized) {
+    return unauthorized
   }
 
   try {
+    const scheduleResults = await fireDueSchedules()
+
     const supabase = createAdminClient()
     const { data: queued } = await supabase
       .from("workflow_executions")
@@ -28,16 +43,24 @@ export async function POST(request: Request) {
       .order("started_at", { ascending: true })
       .limit(10)
 
-    const results = []
+    const queueResults = []
     for (const row of queued ?? []) {
       const result = await processQueuedExecution(row.id)
-      results.push({ id: row.id, result })
+      queueResults.push({ id: row.id, result })
     }
 
     return NextResponse.json({
       ok: true,
-      processed: results.length,
-      results,
+      schedules: {
+        checked: scheduleResults.length,
+        fired: scheduleResults.filter((result) => result.status === "fired")
+          .length,
+        results: scheduleResults,
+      },
+      queue: {
+        processed: queueResults.length,
+        results: queueResults,
+      },
     })
   } catch (error) {
     return NextResponse.json(

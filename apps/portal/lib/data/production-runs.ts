@@ -1,6 +1,7 @@
 import { getLiveWorkflow } from "@/lib/data/deployments"
 import type { ProductionRun, ProductionRunSummary } from "@/lib/domain/production"
 import type { ExecutionStatus } from "@/lib/domain/execution"
+import { resolveTriggerDisplayLabel } from "@/lib/design/trigger-config"
 import { runPlaygroundValidation } from "@/lib/engine/playground"
 import type { PlaygroundRunResult } from "@/lib/engine/types"
 import { executeIntegrationNodeProduction } from "@/lib/integrations/registry/server-runtime"
@@ -302,14 +303,9 @@ export async function startProductionRun(
   }
 
   const triggerNode = workflow.nodes.find((node) => node.kind === "trigger")
-  const triggerType =
-    typeof triggerNode?.config?.triggerMode === "string"
-      ? triggerNode.config.triggerMode
-      : typeof triggerNode?.config?.triggerType === "string"
-        ? triggerNode.config.triggerType
-        : typeof triggerNode?.config?.operation === "string"
-          ? String(triggerNode.config.operation)
-          : "manual"
+  const triggerType = triggerNode
+    ? resolveTriggerDisplayLabel(triggerNode)
+    : "manual"
 
   const triggerPayloads = options?.triggerPayloads
 

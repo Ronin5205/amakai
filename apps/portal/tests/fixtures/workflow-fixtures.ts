@@ -21,6 +21,7 @@ export function triggerNode(
     kind: "trigger",
     config: {
       catalogItemId: "trigger.workflow",
+      triggerMode: "manual",
       triggerType: "manual",
       outputFields,
     },

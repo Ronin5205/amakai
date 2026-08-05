@@ -4,12 +4,19 @@ import { NextResponse, type NextRequest } from "next/server"
 import { portalRoutes } from "@/lib/content"
 import { requireSupabaseEnv } from "@/utils/supabase/env"
 
+// Inbound triggers and provider webhooks (auth is per-route, not session).
+// Keep in sync with apps/portal/app/api/** route handlers.
 const publicPathPrefixes = [
   portalRoutes.signIn,
   portalRoutes.signUp,
   portalRoutes.forgotPassword,
   portalRoutes.resetPassword,
   "/auth",
+  "/api/webhooks",
+  "/api/stripe/webhook",
+  "/api/integrations/gmail/push",
+  "/api/integrations/outlook/webhook",
+  "/api/internal/process-queue",
 ] as const
 
 function isPublicPath(pathname: string) {

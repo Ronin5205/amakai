@@ -30,8 +30,10 @@ function getStatusBadgeClassName(status: string) {
     case "degraded":
     case "warning":
     case "warn":
+    case "alert":
       return "border-border bg-muted/30 text-foreground"
     case "info":
+    case "log":
     case "development":
       return "border-border bg-background text-muted-foreground"
     default:

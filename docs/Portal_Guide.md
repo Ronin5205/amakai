@@ -74,13 +74,34 @@ OAuth connect auto-names secrets from the mailbox local part (e.g. `Gmail abdull
 
 ### Triggers: testing vs live
 
-| Trigger | Testing / Validate | Live (after deploy) |
-|---------|-------------------|---------------------|
-| **Trigger** (`trigger.workflow`) | Simulated — enter payload or use samples | Manual only via **Production → Runs** |
-| **API Trigger** (`trigger.api`) | Simulated — same as above | **Webhook:** `POST /api/webhooks/{token}` auto-starts runs (URL in Operate). **Schedule / signal:** UI only — not auto-fired yet |
-| **External Tool Trigger** (email receive) | Simulated sample email | Inbound Gmail/Outlook push auto-starts runs |
+The palette exposes a single **Trigger** component (`trigger.workflow`). Set **Mode** in the inspector:
 
-Use **API Trigger** (not generic Trigger) for real inbound HTTP webhooks.
+| Mode | Testing / Validate | Live (after deploy) |
+|------|-------------------|---------------------|
+| **Manual** | Enter payload in Testing or Validate | **Production → Runs** only |
+| **Webhook** | Simulated payload | `POST /api/webhooks/{token}` with JSON body (URL under **Operate → Live Workflows**) |
+| **Signal** | Simulated payload | Same webhook URL; `triggerType` in run metadata is `signal` |
+| **Schedule** | Simulated payload | Fires on the configured alarm (once / daily / weekdays / weekly). Requires a cron job calling `POST /api/internal/process-queue` every minute (see below) |
+| **External tool** | Simulated sample email | Gmail Pub/Sub (`/api/integrations/gmail/push`) or Outlook Graph (`/api/integrations/outlook/webhook`) |
+
+Legacy saved graphs may still reference catalog IDs `trigger.api` or `trigger.external-tool`; behavior is normalized to the unified Trigger modes above.
+
+**Schedule worker:** set `CRON_SECRET` in `.env.local`, then call every minute:
+
+```bash
+curl -X POST "http://localhost:3001/api/internal/process-queue" \
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
+```
+
+That tick fires due schedule triggers, then processes queued executions.
+
+**Inbound webhooks** do not use session auth. Public API prefixes are allowlisted in `utils/supabase/middleware.ts` (`/api/webhooks`, Stripe, integration push routes, process-queue).
+
+### Templates
+
+- **Design → Resources → Templates** (stack icon): drag onto the canvas or click **Use template**.
+- Seven provider templates in categories (Starter, Approvals, Data ops, Routing, Scheduled, Webhooks) with **authored grid layouts** (branches are not flattened into one row).
+- Configure integration/table nodes before deploy (e.g. pick a table for **Save contact** in **Webhook Intake Guard**).
 
 ### Deploy
 
@@ -94,10 +115,30 @@ Use **API Trigger** (not generic Trigger) for real inbound HTTP webhooks.
 1. Apply migration `20260803190000_secrets_and_triggers.sql`.
 2. Set `SECRETS_ENCRYPTION_KEY` (or `SUPABASE_SECRET_KEY`) and OAuth client env vars — see `apps/portal/.env.example` (optional unless using Gmail/Outlook connect).
 3. Connect Gmail / Outlook under **Resources → Secrets** (each user connects their own mailbox; env vars are app credentials only).
-4. Add **External Tool Trigger / External Tool / API Trigger / HTTP Request** nodes from the Integrations palette.
-5. Deploy; copy the webhook URL from Operate for **API Trigger** workflows.
+4. Add **Trigger** (webhook/schedule/integration modes), **External Tool**, or **HTTP Request** from the component palette.
+5. Deploy; copy the webhook URL from **Operate → Live Workflows** when Trigger mode is **Webhook** or **Signal**.
 6. For Gmail receive, configure Pub/Sub push to `/api/integrations/gmail/push` and set `GMAIL_PUBSUB_TOPIC`.
-7. Optional queue worker: `POST /api/internal/process-queue` (protect with `CRON_SECRET`).
+7. Schedule + queue worker: call `POST /api/internal/process-queue` every minute (protect with `CRON_SECRET`).
+
+#### Testing inbound webhooks locally
+
+1. Deploy a workflow whose Trigger mode is **Webhook** (template: **Webhook Intake Guard**).
+2. Copy `NEXT_PUBLIC_PORTAL_URL/api/webhooks/{token}` from Operate (default local: `http://localhost:3001/...`).
+3. Health check: `GET` the same URL → `{ "ok": true, "status": "active" }`.
+4. POST JSON whose top-level keys match the trigger **Output fields** (e.g. `eventId`, `email`, `source`).
+
+```bash
+curl -s -X POST "http://localhost:3001/api/webhooks/YOUR-TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: test-001" \
+  -d '{"eventId":"evt-1","email":"jane@example.com","source":"landing-page"}'
+```
+
+On Windows PowerShell use `curl.exe`, not the `Invoke-WebRequest` alias.
+
+Configure **Save contact** (table + column mappings) before expecting a completed run. **Wait** nodes pause the playground but inbound webhook runs execute inline and do not resume after a wait — set wait to `0` ms or bypass that step when testing webhooks end-to-end.
+
+Optional trigger auth: **Secret** (`X-Amakai-Signature` / HMAC) or **Public** (`X-Amakai-Key`).
 
 ### Production runs
 
@@ -119,10 +160,22 @@ Global:
 
 | Page | Shows |
 |------|--------|
-| **Logs** | One row per execution (batched); filters for level/alerts; detail sheet with steps + log lines |
-| **Notification bell** | Warn/error alerts grouped by execution |
+| **Logs** | One row per execution; filters **All**, **Alert**, **Log**, **Error**; legacy `?filter=alerts` still works |
+| **Notification bell** | **Alert** and **error** logs grouped by execution; link opens logs with alert filter |
 
 Alerts are not a separate nav item — they filter logs and the bell.
+
+### Log levels (production)
+
+Production run logs map to three levels:
+
+| Level | Meaning |
+|-------|---------|
+| **alert** | Warnings and attention-worthy events (e.g. wait pauses, approvals pending) |
+| **log** | Normal informational steps |
+| **error** | Failures and stop-and-error nodes |
+
+Playground-only levels (`info`, `success`, `warning`) are mapped into these three when persisted to production history.
 
 ## Execution engine (current)
 
@@ -144,7 +197,10 @@ Production and testing share `lib/engine/playground.ts`:
 | Secrets | `lib/data/secrets.ts`, `lib/actions/secret-actions.ts` |
 | Integration registry | `lib/integrations/registry/` |
 | Email adapters | `lib/integrations/email/adapters.ts` |
-| Inbound runs / webhooks | `lib/data/inbound-runs.ts`, `app/api/webhooks/[token]/route.ts` |
+| Inbound runs / webhooks | `lib/data/inbound-runs.ts`, `lib/data/schedule-runs.ts`, `app/api/webhooks/[token]/route.ts` |
+| Trigger modes / legacy IDs | `lib/design/trigger-config.ts` |
+| Schedule domain | `lib/domain/trigger-schedule.ts`, `lib/cron/expression.ts` |
+| Templates catalog | `lib/data/templates.ts` |
 | Input validation (Zod) | `lib/validation/` |
 | Billing / plans | `lib/stripe/gateway.ts` (sole Stripe SDK entry), `lib/data/billing.ts`, `components/billing/`, `app/api/stripe/webhook` |
 | Editor | `components/design/design-hub-view.tsx` |
@@ -163,6 +219,7 @@ Production and testing share `lib/engine/playground.ts`:
 
 ## Agent notes
 
-- Read Next.js docs in `node_modules/next/dist/docs/` (Next.js 16; `proxy.ts` not `middleware.ts`).
+- Read Next.js docs in `node_modules/next/dist/docs/` (Next.js 16).
+- Session middleware: `apps/portal/middleware.ts` → `utils/supabase/middleware.ts` (`updateSession`). Inbound API routes are public-path allowlisted; do not require login for `/api/webhooks/*`.
 - Portal data accessors: [apps/portal/lib/data/README.md](../apps/portal/lib/data/README.md).
 - Minimize scope: one accessor or route at a time; keep views presentational.

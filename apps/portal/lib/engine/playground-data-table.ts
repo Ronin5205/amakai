@@ -13,6 +13,7 @@ import {
   parseOutputFieldDefs,
   type OutputFieldType,
 } from "@/lib/design/output-fields"
+import { normalizeTriggerMode } from "@/lib/design/trigger-config"
 import {
   asEditRows,
   asRenameRows,
@@ -143,7 +144,7 @@ export function buildTriggerPayloadFromValues(
     {
       ...resolved,
       triggeredAt: new Date().toISOString(),
-      triggerType: String(node.config.triggerType ?? "manual"),
+      triggerType: normalizeTriggerMode(node),
     }
   )
 }

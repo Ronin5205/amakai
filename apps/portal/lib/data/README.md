@@ -44,7 +44,8 @@ export default async function Page({ params }) {
 | `secrets.ts` | CRUD, OAuth state, encrypted payloads | Supabase | `secret` |
 | `billing.ts` | Billing profile, plan, Stripe customer/subscription sync | Supabase + Stripe | `billing` |
 | `trigger-subscriptions.ts` | `syncTriggerSubscriptions`, webhook/email subscription lookup | Supabase | — |
-| `inbound-runs.ts` | `enqueueAndProcessInboundRun` (webhooks, email push) | Supabase | — |
+| `schedule-runs.ts` | `fireDueSchedules`, schedule subscription helpers | Supabase | — |
+| `inbound-runs.ts` | `enqueueAndProcessInboundRun`, `processQueuedExecution` | Supabase | — |
 
 Supporting logic (not accessors):
 
@@ -76,11 +77,17 @@ Apply migrations in `supabase/migrations/` (oldest first):
 
 ## Production execution flow
 
-1. User deploys from the workflow editor (`deployWorkflowDraft`) → workflow status `published`, version `live`.
-2. User runs from **Production → Runs** (`startProductionRun`) with optional trigger payload.
-3. Run is stored in `workflow_executions` with `result` JSON (steps, trigger input).
+1. User deploys from the workflow editor (`deployWorkflowDraft`) → workflow status `published`, version `live`, trigger subscriptions synced (webhook token, schedule metadata, Gmail/Outlook watches).
+2. A run starts from:
+   - **Production → Runs** (`startProductionRun`) with optional trigger payload, or
+   - **Inbound triggers:** `POST /api/webhooks/{token}`, email push routes, or schedule tick via `POST /api/internal/process-queue` → `enqueueAndProcessInboundRun` / `fireDueSchedules`.
+3. Run is stored in `workflow_executions` with `result` JSON (steps, trigger input, optional `pendingApproval` / `pendingWait`).
 4. **Operate → Logs**, **Live Workflows → Executions/Monitoring**, and **Production → History** read from the same table.
 5. After each run, executions older than the last **20 per workflow** are deleted.
+
+Inbound webhook/email routes are **session-public** (see `utils/supabase/middleware.ts`); auth is per-route (webhook token, HMAC, provider push verification).
+
+Schedule triggers require an external cron calling `POST /api/internal/process-queue` every minute when `CRON_SECRET` is set.
 
 ## Swapping or extending backends
 

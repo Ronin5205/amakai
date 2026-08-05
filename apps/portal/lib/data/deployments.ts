@@ -9,6 +9,11 @@ import {
   type WorkflowGraphPayload,
   type WorkflowRow,
 } from "@/lib/data/workflow-mappers"
+import {
+  needsWebhookToken,
+  normalizeTriggerMode,
+  resolveTriggerDisplayLabel,
+} from "@/lib/design/trigger-config"
 import { createClient } from "@/utils/supabase/server"
 
 const PRODUCTION_ENVIRONMENT = {
@@ -161,25 +166,32 @@ export async function deployWorkflowDraft(
     throw new Error(releaseError.message ?? "Failed to record deployment.")
   }
 
-  // Ensure API trigger tokens exist, then register inbound subscriptions
+  // Ensure webhook/signal tokens exist, then register inbound subscriptions
   const graphPayload = graph as WorkflowGraphPayload
   const nodes = (graphPayload.nodes ?? []).map((node) => {
-    if (
-      node.kind === "trigger" &&
-      (node.config?.catalogItemId === "trigger.api" ||
-        node.config?.componentVariant === "trigger.api") &&
-      (!node.config.webhookToken ||
-        String(node.config.webhookToken).trim() === "")
-    ) {
-      return {
-        ...node,
-        config: {
-          ...node.config,
-          webhookToken: crypto.randomUUID(),
-        },
-      }
+    if (node.kind !== "trigger") {
+      return node
     }
-    return node
+
+    if (!needsWebhookToken(node)) {
+      return node
+    }
+
+    if (
+      node.config.webhookToken &&
+      String(node.config.webhookToken).trim() !== ""
+    ) {
+      return node
+    }
+
+    return {
+      ...node,
+      config: {
+        ...node.config,
+        triggerMode: normalizeTriggerMode(node),
+        webhookToken: crypto.randomUUID(),
+      },
+    }
   })
 
   if (JSON.stringify(nodes) !== JSON.stringify(graphPayload.nodes ?? [])) {
@@ -266,14 +278,9 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
 
     const nodes = versionGraph.nodes ?? []
     const triggerNode = nodes.find((node) => node.kind === "trigger")
-    const triggerType =
-      typeof triggerNode?.config?.triggerMode === "string"
-        ? triggerNode.config.triggerMode
-        : typeof triggerNode?.config?.operation === "string"
-          ? String(triggerNode.config.operation)
-          : typeof triggerNode?.config?.triggerType === "string"
-            ? triggerNode.config.triggerType
-            : undefined
+    const triggerType = triggerNode
+      ? resolveTriggerDisplayLabel(triggerNode)
+      : undefined
 
     const subscription = subscriptionByWorkflow.get(workflow.id)
     const webhookUrl =
@@ -367,14 +374,9 @@ export async function getLiveWorkflow(
   const nodes = publishedVersion.graph.nodes ?? []
   const edges = publishedVersion.graph.edges ?? []
   const triggerNode = nodes.find((node) => node.kind === "trigger")
-  const triggerType =
-    typeof triggerNode?.config?.triggerMode === "string"
-      ? triggerNode.config.triggerMode
-      : typeof triggerNode?.config?.operation === "string"
-        ? String(triggerNode.config.operation)
-        : typeof triggerNode?.config?.triggerType === "string"
-          ? triggerNode.config.triggerType
-          : undefined
+  const triggerType = triggerNode
+    ? resolveTriggerDisplayLabel(triggerNode)
+    : undefined
 
   const { data: subscription } = await auth.supabase
     .from("workflow_trigger_subscriptions")

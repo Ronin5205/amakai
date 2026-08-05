@@ -185,9 +185,14 @@ export function SettingsView({
       return
     }
 
-    setProfile((current) => ({ ...current, workflowCount: 0, tableCount: 0 }))
+    setProfile((current) => ({
+      ...current,
+      workflowCount: 0,
+      tableCount: 0,
+      secretCount: 0,
+    }))
     setActiveAction(null)
-    setSuccessMessage("Deleted all workflows and tables.")
+    setSuccessMessage("Deleted all workflows, tables, and secrets.")
     router.refresh()
   }
 
@@ -457,14 +462,16 @@ export function SettingsView({
             <div className="flex min-w-0 flex-col gap-1">
               <span className="text-sm font-medium">Delete all user data</span>
               <span className="text-sm text-muted-foreground">
-                Remove every workflow and table in one step. Your account stays
-                active.
+                Remove every workflow, table, and secret in one step. Your
+                account stays active.
               </span>
             </div>
             <Button
               variant="outline"
               disabled={
-                (profile.workflowCount === 0 && profile.tableCount === 0) ||
+                (profile.workflowCount === 0 &&
+                  profile.tableCount === 0 &&
+                  profile.secretCount === 0) ||
                 isConfirming
               }
               className="w-full shrink-0 sm:w-auto"
@@ -559,7 +566,8 @@ export function SettingsView({
         description={
           <>
             This permanently deletes all workflows, deployed versions, run
-            history, and data tables. Your account will remain signed in.
+            history, data tables, and secrets. Your account will remain signed
+            in.
           </>
         }
         confirmLabel="Delete all data"

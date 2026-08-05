@@ -33,7 +33,7 @@ export type AiUsage = {
   modelUtilization: Record<string, number>
 }
 
-export type LogLevel = "info" | "warn" | "error" | "debug"
+export type LogLevel = "alert" | "log" | "error"
 
 export type LogEntry = {
   id: string

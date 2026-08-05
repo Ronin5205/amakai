@@ -13,11 +13,10 @@ export const metadata: Metadata = {
 
 function parseLogFilter(value?: string): LogFilter {
   if (
-    value === "alerts" ||
-    value === "info" ||
-    value === "warn" ||
+    value === "alert" ||
+    value === "log" ||
     value === "error" ||
-    value === "debug"
+    value === "alerts"
   ) {
     return value
   }
@@ -58,7 +57,7 @@ export default async function Page({
     <SectionPage
       eyebrow="Operate"
       title="Logs"
-      description="Production runs grouped by execution. Warnings and errors also surface in your notification bell."
+      description="Production runs grouped by execution. Alerts and errors also surface in your notification bell."
     >
       <Suspense fallback={null}>
         <LogsContent

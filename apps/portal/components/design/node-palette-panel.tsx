@@ -5,7 +5,6 @@ import { useDraggable } from "@dnd-kit/core"
 import { DotsSixVerticalIcon, MagnifyingGlassIcon } from "@phosphor-icons/react"
 
 import {
-  BASE_COMPONENT_CATEGORY_IDS,
   getComponentCatalogGroups,
   type ComponentCatalogItem,
 } from "@/lib/design/component-catalog"
@@ -78,9 +77,7 @@ export function NodePalettePanel({
 }: NodePalettePanelProps) {
   const [query, setQuery] = React.useState("")
   const groups = React.useMemo(() => getComponentCatalogGroups(query), [query])
-  const [openCategories, setOpenCategories] = React.useState<string[]>(
-    BASE_COMPONENT_CATEGORY_IDS
-  )
+  const [openCategories, setOpenCategories] = React.useState<string[]>([])
 
   const filteredGroups = React.useMemo(() => {
     if (!connectionDraft || !anchorNode) {
@@ -108,7 +105,7 @@ export function NodePalettePanel({
       return
     }
 
-    setOpenCategories(BASE_COMPONENT_CATEGORY_IDS)
+    setOpenCategories([])
   }, [filteredGroups, query])
 
   const placementHint =

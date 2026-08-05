@@ -93,30 +93,44 @@ Pause/resume nodes (**Approval**, **Wait**) stop the run until the user approves
 
 ### Trigger (`trigger.workflow`)
 
-**Kind:** `trigger`  
-**Inputs:** none (cannot receive incoming connections)  
-**Outputs:** `main-out`
+Single palette component for all start modes. **Kind:** `trigger` · **Inputs:** none · **Outputs:** `main-out`
+
+Legacy catalog IDs `trigger.api` and `trigger.external-tool` in older graphs resolve to the same ports and validation.
 
 #### Configuration
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `triggerType` | select | `webhook`, `schedule`, or `manual` (default `manual`) — **metadata only**; does not register a live webhook. Use **API Trigger** for inbound HTTP. |
-| `outputFields` | output-fields | Declares fields added to the starting payload |
+| `triggerMode` | select | `manual`, `schedule`, `webhook`, `signal`, or `integration` (default `manual`) |
+| `schedule` | schedule-picker | Visible when mode is **Schedule** — date, time (minute precision), once or repeat (daily / weekdays / weekly) |
+| `webhookToken` | string | Auto-generated on deploy when mode is **Webhook** or **Signal** |
+| `authMode` | select | `none`, `secret` (HMAC / signing secret), or `public` (`X-Amakai-Key`) — webhook/signal only |
+| `secretName` | secret-select | Signing secret when auth is Secret |
+| `publicApiKey` | string | Header value when auth is Public |
+| `integration` | integration-config | Visible when mode is **External tool** — service / provider / operation (`receive` for email) |
+| `outputFields` | output-fields | Fields added to the starting payload |
 
-New triggers default to one object field: `{ name: "payload", type: "object" }`.
+`triggerType` is kept in sync with `triggerMode` for older readers (except integration mode).
 
-#### Runtime behavior
+#### Runtime by mode
 
-1. Builds the initial payload from configured output fields.
-2. In **Testing**, values come from the trigger input panel; in **Validation** without custom values, sample data is auto-filled.
-3. Always adds metadata: `triggeredAt`, `triggerType`, and `playground: true` when using sample fill.
+| Mode | Testing / Validate | Live (deployed) |
+|------|-------------------|-----------------|
+| `manual` | Trigger input panel or samples | **Production → Runs** |
+| `webhook` | Simulated payload | `POST /api/webhooks/{token}` — JSON body keys map to output fields; optional HMAC or `X-Amakai-Key` |
+| `signal` | Simulated payload | Same URL as webhook; subscription `operation` is `signal` |
+| `schedule` | Simulated payload | Due times evaluated by `lib/data/schedule-runs.ts` when `POST /api/internal/process-queue` runs (every minute + `CRON_SECRET`) |
+| `integration` | Simulated inbound email | Gmail Pub/Sub or Outlook Graph webhook enqueues a run |
+
+On deploy, subscriptions are registered in `workflow_trigger_subscriptions`. Webhook URL appears under **Operate → Live Workflows**. Inbound webhook routes bypass session auth (see `utils/supabase/middleware.ts`).
+
+**Inbound webhook caveat:** runs execute inline via `enqueueAndProcessInboundRun`. **Wait** nodes set `pendingWait` but are not resumed automatically — the run may be marked **failed** at the wait step. Use Testing/Production Runs for full wait simulation, or set wait duration to `0` on webhook paths.
 
 #### Array fields in Testing
 
 Array-typed trigger fields accept **comma-separated values** (e.g. `a, b, c`). JSON array syntax (`["a","b"]`) is also accepted when the input starts with `[`.
 
-#### Example output
+#### Example output (manual mode)
 
 ```json
 {
@@ -131,69 +145,6 @@ Array-typed trigger fields accept **comma-separated values** (e.g. `a, b, c`). J
 ```
 
 Use an **array** output field when feeding **Loop Over Items**.
-
----
-
-### External Tool Trigger (`trigger.external-tool`)
-
-**Kind:** `trigger`  
-**Category:** Integrations  
-**Inputs:** none  
-**Outputs:** `main-out`
-
-Starts a workflow from an external service receive operation (currently **Gmail** / **Outlook** email receive).
-
-#### Configuration
-
-Cascade: **Service → Provider → Operation** (must be a `receive` operation for trigger nodes).
-
-| Field | Description |
-|-------|-------------|
-| `service` | e.g. `email` |
-| `provider` | `gmail` or `outlook` |
-| `operation` | `receive` |
-| `authMode` | Must be `secret` for OAuth providers |
-| `secretName` | Connected mailbox from Resources → Secrets |
-| `outputFields` | Defaults: from, to, subject, body, bodyHtml, messageId, threadId, receivedAt, attachments |
-
-Secret names auto-generated on OAuth connect use the mailbox local part (e.g. `Gmail user`) — not the full email address (see name validation in `lib/validation/`).
-
-#### Runtime
-
-- **Playground / Testing:** simulates a sample inbound email payload.
-- **Production:** Gmail Pub/Sub push (`/api/integrations/gmail/push`) or Outlook Graph notifications (`/api/integrations/outlook/webhook`) enqueue a run with the normalized message.
-
-Requires OAuth connect under **Resources → Secrets**, and for Gmail inbound set `GMAIL_PUBSUB_TOPIC`.
-
----
-
-### API Trigger (`trigger.api`)
-
-**Kind:** `trigger`  
-**Category:** Integrations  
-**Inputs:** none  
-**Outputs:** `main-out`
-
-#### Configuration
-
-| Field | Description |
-|-------|-------------|
-| `triggerMode` | `webhook`, `schedule`, `manual`, or `signal` |
-| `webhookToken` | Auto-generated on create/deploy; URL `/api/webhooks/{token}` |
-| `authMode` | `none`, `secret` (HMAC / signing secret), or `public` (`X-Amakai-Key`) |
-| `secretName` | Signing secret when auth is Secret |
-| `publicApiKey` | Header value when auth is Public |
-| `outputFields` | Declared webhook/signal payload schema |
-
-#### Runtime
-
-| Mode | Testing / Validate | Live (deployed) |
-|------|-------------------|-----------------|
-| `webhook` | Simulated — provide payload in Testing or Validate | `POST /api/webhooks/{token}` with JSON body; optional HMAC or `X-Amakai-Key` auth |
-| `manual` | Simulated | **Production → Runs** only |
-| `schedule`, `signal` | Simulated | **Not auto-fired yet** (UI placeholder) |
-
-On deploy, a webhook subscription is registered and the public URL appears under **Operate → Live Workflows**.
 
 ---
 
@@ -780,7 +731,7 @@ Group Items can read `itemsField` explicitly or auto-detect `loopItems` / table 
 
 ### Switch → Wait → Edit Fields
 
-Each switch case connects to its own branch (see **demo-switch-lab** template). Switch evaluates rules; Wait pauses; Edit Fields maps branch-specific outputs.
+Each switch case connects to its own branch (see the **Lead Scoring Router** template). Switch evaluates rules; Wait pauses; Edit Fields maps branch-specific outputs.
 
 ### IF → Approval
 
@@ -798,7 +749,7 @@ Use IF **true** / **false** branches for mutually exclusive paths (IF evaluates 
 - Any node is unreachable from a trigger  
 - A required input port has no incoming edge  
 - **Combine Branches** is missing any required `input-1` … `input-N` connection  
-- **Trigger** has no output fields (`trigger.workflow`, `trigger.api`)  
+- **Trigger** must declare at least one output field (unified `trigger.workflow`; legacy `trigger.api` graphs included)
 - Required config is missing (empty code, table name, comparison values, integration secret, etc.)
 
 Integration nodes use stricter pre-run checks via `validateNodeConfigForRun` when wired into the playground.
@@ -814,6 +765,7 @@ Maximum **200 steps** per run (`MAX_PLAYGROUND_STEPS`) to prevent infinite loops
 3. **Paused runs:** Approval and Wait require user action or timer completion before continuing.
 4. **IF / Switch / Filter** all evaluate comparison rules in Testing and Validation.
 5. **Edit Fields fan-out:** connect each `output-N` to different downstream nodes when you need per-field paths.
+6. **Templates:** use **Design → Templates** for starter graphs with lane layouts; webhook testing steps are in [Portal_Guide.md](./Portal_Guide.md#integrations-setup).
 
 ---
 
@@ -833,4 +785,6 @@ Maximum **200 steps** per run (`MAX_PLAYGROUND_STEPS`) to prevent infinite loops
 | Group Items transform | `apps/portal/lib/engine/payload-transforms.ts` |
 | Loop collection parsing | `apps/portal/lib/engine/loop-collection.ts` |
 | JSON / array parsing | `apps/portal/lib/design/json-value.ts` |
-| Demo workflows | `apps/portal/lib/data/templates.ts` |
+| Demo / provider templates | `apps/portal/lib/data/templates.ts` |
+| Trigger mode helpers | `apps/portal/lib/design/trigger-config.ts` |
+| Schedule firing | `apps/portal/lib/data/schedule-runs.ts`, `apps/portal/lib/domain/trigger-schedule.ts` |

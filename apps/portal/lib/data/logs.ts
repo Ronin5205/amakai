@@ -2,11 +2,7 @@ import {
   buildExecutionLogDetailFromProductionRun,
   buildExecutionLogGroups,
 } from "@/lib/operate/production-execution-insights"
-import {
-  filterAlertLogs,
-  isAlertLog,
-  isAlertLogLevel,
-} from "@/lib/operate/log-levels"
+import { isAlertLog, isAlertLogLevel } from "@/lib/operate/log-levels"
 import {
   getProductionExecutionRecord,
   listProductionExecutionRecords,

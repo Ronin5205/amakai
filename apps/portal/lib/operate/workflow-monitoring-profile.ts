@@ -4,6 +4,7 @@ import type {
 } from "@/lib/domain/operate"
 import type { LiveWorkflowDetail } from "@/lib/domain/deployment"
 import type { WorkflowNode } from "@/lib/domain/workflow"
+import { resolveTriggerDisplayLabel } from "@/lib/design/trigger-config"
 import {
   buildNodeHealthFromExecutions,
   countNodeStepEvents,
@@ -38,8 +39,7 @@ function isIntegrationNode(node: WorkflowNode) {
 }
 
 function getTriggerType(node: WorkflowNode) {
-  const triggerType = node.config?.triggerType
-  return typeof triggerType === "string" ? triggerType : "manual"
+  return resolveTriggerDisplayLabel(node)
 }
 
 function metric(

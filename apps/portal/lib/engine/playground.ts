@@ -25,6 +25,11 @@ import {
   resolveNodeDefinition,
 } from "@/lib/design/resolve-node-definition"
 import {
+  isIntegrationTrigger,
+  isUnifiedTriggerCatalogId,
+  normalizeTriggerMode,
+} from "@/lib/design/trigger-config"
+import {
   buildOutgoingEdgeMap,
   findTriggerNodes,
   findUnreachableNodeIds,
@@ -541,7 +546,7 @@ async function processNodeInPlayground(
 
   switch (node.kind) {
     case "trigger": {
-      if (catalogItemId === "trigger.external-tool") {
+      if (isIntegrationTrigger(node)) {
         const { resolveIntegrationOperationFromNode } = await import(
           "@/lib/integrations/registry"
         )
@@ -550,7 +555,7 @@ async function processNodeInPlayground(
           return {
             ok: false,
             message:
-              "Configure service, provider, and a receive operation on this External Tool trigger.",
+              "Configure service, provider, and a receive operation on this External tool trigger.",
           }
         }
         const customValues = options?.triggerPayloads?.[node.id]
@@ -589,13 +594,10 @@ async function processNodeInPlayground(
         }
       }
 
-      const triggerType = String(
-        node.config.triggerMode ?? node.config.triggerType ?? "manual"
-      )
+      const triggerType = normalizeTriggerMode(node)
       const outputFields = parseOutputFieldDefs(node.config)
       if (
-        (catalogItemId === "trigger.workflow" ||
-          catalogItemId === "trigger.api") &&
+        isUnifiedTriggerCatalogId(catalogItemId) &&
         outputFields.length === 0
       ) {
         return {

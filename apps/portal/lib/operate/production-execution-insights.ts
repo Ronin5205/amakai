@@ -141,13 +141,13 @@ export function formatTriggerInputSummary(
 function mapPlaygroundLogLevel(level: PlaygroundLogLevel): LogLevel {
   switch (level) {
     case "warning":
-      return "warn"
+      return "alert"
     case "error":
       return "error"
     case "success":
     case "info":
     default:
-      return "info"
+      return "log"
   }
 }
 
@@ -300,10 +300,9 @@ export function buildLogEntriesFromExecutions(
 }
 
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
+  log: 0,
+  alert: 1,
+  error: 2,
 }
 
 function getWorstLogLevel(logs: LogEntry[]): LogLevel {
@@ -311,7 +310,7 @@ function getWorstLogLevel(logs: LogEntry[]): LogLevel {
     return LOG_LEVEL_PRIORITY[log.level] > LOG_LEVEL_PRIORITY[worst]
       ? log.level
       : worst
-  }, "info" as LogLevel)
+  }, "log" as LogLevel)
 }
 
 function summarizeExecutionLogs(
@@ -327,9 +326,9 @@ function summarizeExecutionLogs(
     return record.errorMessage
   }
 
-  const warnLog = logs.find((log) => log.level === "warn")
-  if (warnLog) {
-    return warnLog.message
+  const alertLog = logs.find((log) => log.level === "alert")
+  if (alertLog) {
+    return alertLog.message
   }
 
   if (logs.length === 0) {

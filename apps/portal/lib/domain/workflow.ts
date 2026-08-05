@@ -36,6 +36,7 @@ export type ConfigFieldType =
   | "table-column-select"
   | "secret-select"
   | "integration-config"
+  | "schedule-picker"
   /** @internal Legacy — never surfaced in the inspector; nodes exchange JSON at runtime. */
   | "json"
 

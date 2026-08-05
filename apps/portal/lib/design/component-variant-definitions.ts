@@ -5,6 +5,13 @@ import type {
 } from "@/lib/domain/workflow"
 import { buildDefaultSwitchCases } from "@/lib/design/upstream-fields"
 import { COMPARISON_OPERATORS } from "@/lib/design/comparison-rules"
+import {
+  defaultOutputFieldsForTriggerMode,
+  TRIGGER_MODE_OPTIONS,
+  UNIFIED_TRIGGER_CATALOG_ID,
+  isUnifiedTriggerCatalogId,
+  resolveCanonicalTriggerCatalogId,
+} from "@/lib/design/trigger-config"
 
 export type ComponentVariantSpec = {
   catalogItemId: string
@@ -121,116 +128,89 @@ function buildMergeInputs(node: WorkflowNode): NodePort[] {
   })
 }
 
+const UNIFIED_TRIGGER_CONFIG_SCHEMA: ConfigSchemaField[] = [
+  {
+    key: "triggerMode",
+    label: "Mode",
+    type: "select",
+    options: TRIGGER_MODE_OPTIONS.map((option) => ({ ...option })),
+    defaultValue: "manual",
+    description:
+      "How this workflow starts: manually, on a schedule, via webhook/signal, or from an external tool.",
+  },
+  {
+    key: "schedule",
+    label: "Schedule",
+    type: "schedule-picker",
+    description: "Pick a date and exact time, once or on a loop.",
+  },
+  {
+    key: "webhookToken",
+    label: "Webhook token",
+    type: "string",
+    description: "Auto-filled on deploy. Public URL: /api/webhooks/{token}",
+  },
+  {
+    key: "authMode",
+    label: "Webhook auth",
+    type: "select",
+    options: [
+      { label: "None", value: "none" },
+      { label: "Secret (HMAC / signing)", value: "secret" },
+      { label: "Public header key", value: "public" },
+    ],
+    defaultValue: "none",
+  },
+  {
+    key: "secretName",
+    label: "Signing secret",
+    type: "secret-select",
+    secretKinds: ["webhook_signing", "api_key"],
+  },
+  {
+    key: "publicApiKey",
+    label: "Public header value",
+    type: "string",
+    description: "Compared to X-Amakai-Key when auth is Public.",
+  },
+  {
+    key: "integration",
+    label: "Service / provider / operation",
+    type: "integration-config",
+    description: "Inbound external tool that starts this workflow.",
+  },
+  {
+    key: "outputFields",
+    label: "Output fields",
+    type: "output-fields",
+    description:
+      "Fields this trigger adds to the payload. Array fields accept comma-separated values in Testing.",
+  },
+]
+
+const UNIFIED_TRIGGER_SPEC: ComponentVariantSpec = {
+  catalogItemId: UNIFIED_TRIGGER_CATALOG_ID,
+  inputs: [],
+  outputs: [
+    output(
+      "main-out",
+      "Output",
+      "Starts the workflow and passes the trigger payload to the next step."
+    ),
+  ],
+  configSchema: UNIFIED_TRIGGER_CONFIG_SCHEMA,
+}
+
 export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
-  "trigger.workflow": {
-    catalogItemId: "trigger.workflow",
-    inputs: [],
-    outputs: [
-      output(
-        "main-out",
-        "Output",
-        "Starts the workflow and passes the trigger payload to the next step."
-      ),
-    ],
-    configSchema: [
-      {
-        key: "triggerType",
-        label: "Type",
-        type: "select",
-        options: [
-          { label: "Webhook", value: "webhook" },
-          { label: "Schedule", value: "schedule" },
-          { label: "Manual", value: "manual" },
-        ],
-        defaultValue: "manual",
-      },
-      {
-        key: "outputFields",
-        label: "Output fields",
-        type: "output-fields",
-        description:
-          "Fields this trigger adds to the payload. Array fields accept comma-separated values in Testing. Use Array for collections consumed by Loop Over Items.",
-      },
-    ],
+  "trigger.workflow": UNIFIED_TRIGGER_SPEC,
+  // Legacy aliases — same ports/schema; mode inferred via normalizeTriggerMode.
+  "trigger.api": {
+    ...UNIFIED_TRIGGER_SPEC,
+    catalogItemId: "trigger.api",
   },
   "trigger.external-tool": {
+    ...UNIFIED_TRIGGER_SPEC,
     catalogItemId: "trigger.external-tool",
-    inputs: [],
-    outputs: [
-      output(
-        "main-out",
-        "Output",
-        "Starts the workflow with the inbound external-tool payload."
-      ),
-    ],
-    configSchema: [
-      {
-        key: "integration",
-        label: "Service / provider / operation",
-        type: "integration-config",
-      },
-    ],
-  },
-  "trigger.api": {
-    catalogItemId: "trigger.api",
-    inputs: [],
-    outputs: [
-      output(
-        "main-out",
-        "Output",
-        "Starts the workflow from a webhook, schedule, manual run, or signal."
-      ),
-    ],
-    configSchema: [
-      {
-        key: "triggerMode",
-        label: "Mode",
-        type: "select",
-        options: [
-          { label: "Webhook", value: "webhook" },
-          { label: "Schedule", value: "schedule" },
-          { label: "Manual", value: "manual" },
-          { label: "Signal", value: "signal" },
-        ],
-        defaultValue: "webhook",
-      },
-      {
-        key: "webhookToken",
-        label: "Webhook token",
-        type: "string",
-        description:
-          "Auto-filled on deploy. Public URL: /api/webhooks/{token}",
-      },
-      {
-        key: "authMode",
-        label: "Webhook auth",
-        type: "select",
-        options: [
-          { label: "None", value: "none" },
-          { label: "Secret (HMAC / signing)", value: "secret" },
-          { label: "Public header key", value: "public" },
-        ],
-        defaultValue: "none",
-      },
-      {
-        key: "secretName",
-        label: "Signing secret",
-        type: "secret-select",
-        secretKinds: ["webhook_signing", "api_key"],
-      },
-      {
-        key: "publicApiKey",
-        label: "Public header value",
-        type: "string",
-        description: "Compared to X-Amakai-Key when auth is Public.",
-      },
-      {
-        key: "outputFields",
-        label: "Output fields",
-        type: "output-fields",
-        description: "Declares the expected webhook/signal payload schema.",
-      },
-    ],
   },
   "integrations.external-tool": {
     catalogItemId: "integrations.external-tool",
@@ -762,10 +742,20 @@ export function getComponentVariantSpec(
     return null
   }
 
-  return COMPONENT_VARIANT_SPECS[catalogItemId] ?? null
+  const canonical = resolveCanonicalTriggerCatalogId(catalogItemId) ?? catalogItemId
+  return COMPONENT_VARIANT_SPECS[catalogItemId] ?? COMPONENT_VARIANT_SPECS[canonical] ?? null
 }
 
 export function getCatalogItemId(node: WorkflowNode): string | undefined {
+  const fromConfig = node.config.catalogItemId ?? node.config.componentVariant
+  if (typeof fromConfig !== "string" || fromConfig.length === 0) {
+    return undefined
+  }
+  return resolveCanonicalTriggerCatalogId(fromConfig) ?? fromConfig
+}
+
+/** Raw stored catalog id before alias normalization (for migration/inference). */
+export function getRawCatalogItemId(node: WorkflowNode): string | undefined {
   const fromConfig = node.config.catalogItemId ?? node.config.componentVariant
   return typeof fromConfig === "string" && fromConfig.length > 0
     ? fromConfig
@@ -773,7 +763,7 @@ export function getCatalogItemId(node: WorkflowNode): string | undefined {
 }
 
 export function getDefaultVariantConfig(catalogItemId: string) {
-  const spec = COMPONENT_VARIANT_SPECS[catalogItemId]
+  const spec = getComponentVariantSpec(catalogItemId)
   if (!spec?.configSchema) {
     return {}
   }
@@ -806,41 +796,33 @@ export function getDefaultVariantConfig(catalogItemId: string) {
     config.fieldEdits = normalizeFieldEditRows(config.fieldEdits, fieldCount)
   }
 
-  if (catalogItemId === "trigger.workflow") {
-    config.outputFieldDefs = [{ name: "payload", type: "object" }]
-    config.outputFields = ["payload"]
-    config.outputFieldTypes = { payload: "object" }
-  }
-
-  if (catalogItemId === "trigger.api") {
-    config.outputFieldDefs = [{ name: "payload", type: "object" }]
-    config.outputFields = ["payload"]
-    config.outputFieldTypes = { payload: "object" }
-    if (!config.webhookToken) {
+  if (isUnifiedTriggerCatalogId(catalogItemId)) {
+    const mode =
+      catalogItemId === "trigger.external-tool"
+        ? ("integration" as const)
+        : catalogItemId === "trigger.api"
+          ? ("webhook" as const)
+          : ("manual" as const)
+    config.triggerMode = mode
+    if (mode !== "integration") {
+      config.triggerType = mode
+    }
+    const defs = defaultOutputFieldsForTriggerMode(mode)
+    config.outputFieldDefs = defs
+    config.outputFields = defs.map((field) => field.name)
+    config.outputFieldTypes = Object.fromEntries(
+      defs.map((field) => [field.name, field.type])
+    )
+    if (mode === "integration") {
+      config.service = "email"
+      config.provider = "gmail"
+      config.operation = "receive"
+      config.authMode = "secret"
+    }
+    if (mode === "webhook") {
+      config.authMode = config.authMode ?? "none"
       config.webhookToken = crypto.randomUUID()
     }
-  }
-
-  if (catalogItemId === "trigger.external-tool") {
-    config.outputFieldDefs = [
-      { name: "from", type: "string" },
-      { name: "to", type: "string" },
-      { name: "subject", type: "string" },
-      { name: "body", type: "string" },
-      { name: "bodyHtml", type: "string" },
-      { name: "messageId", type: "string" },
-      { name: "threadId", type: "string" },
-      { name: "receivedAt", type: "string" },
-      { name: "attachments", type: "array" },
-    ]
-    config.outputFields = (
-      config.outputFieldDefs as Array<{ name: string }>
-    ).map((field) => field.name)
-    config.outputFieldTypes = Object.fromEntries(
-      (config.outputFieldDefs as Array<{ name: string; type: string }>).map(
-        (field) => [field.name, field.type]
-      )
-    )
   }
 
   return config

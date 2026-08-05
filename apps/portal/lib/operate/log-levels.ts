@@ -5,7 +5,8 @@ import type {
   LogLevel,
 } from "@/lib/domain/monitoring"
 
-export const ALERT_LOG_LEVELS: LogLevel[] = ["warn", "error"]
+/** Levels that surface in the notification tray. */
+export const ALERT_LOG_LEVELS: LogLevel[] = ["alert", "error"]
 
 export function isAlertLogLevel(level: LogLevel) {
   return ALERT_LOG_LEVELS.includes(level)

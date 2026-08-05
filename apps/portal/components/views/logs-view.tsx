@@ -117,11 +117,9 @@ export function LogsView({
           onValueChange={handleFilterChange}
         >
           <ToggleGroupItem value="all">All</ToggleGroupItem>
-          <ToggleGroupItem value="alerts">Alerts</ToggleGroupItem>
-          <ToggleGroupItem value="info">Info</ToggleGroupItem>
-          <ToggleGroupItem value="warn">Warn</ToggleGroupItem>
+          <ToggleGroupItem value="alert">Alert</ToggleGroupItem>
+          <ToggleGroupItem value="log">Log</ToggleGroupItem>
           <ToggleGroupItem value="error">Error</ToggleGroupItem>
-          <ToggleGroupItem value="debug">Debug</ToggleGroupItem>
         </ToggleGroup>
 
         {filteredGroups.length === 0 ? (

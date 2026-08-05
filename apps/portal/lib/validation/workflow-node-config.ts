@@ -29,6 +29,12 @@ import {
 } from "@/lib/validation/limits"
 import { resourceNameSchema } from "@/lib/validation/resource-names"
 import { formatZodError } from "@/lib/validation/zod-helpers"
+import { isValidTriggerSchedule } from "@/lib/domain/trigger-schedule"
+import {
+  isIntegrationTrigger,
+  isUnifiedTriggerCatalogId,
+  normalizeTriggerMode,
+} from "@/lib/design/trigger-config"
 
 const comparisonOperatorSchema = z.enum(
   COMPARISON_OPERATORS.map((entry) => entry.value) as [
@@ -90,12 +96,37 @@ const tableColumnMapRowSchema = z.object({
   sourceField: optionalBoundedString(256, "Source field"),
 })
 
-const triggerConfigSchema = z
+const unifiedTriggerConfigSchema = z
   .object({
-    triggerType: z.enum(["webhook", "schedule", "manual"]).optional(),
+    triggerMode: z
+      .enum(["manual", "schedule", "webhook", "signal", "integration"])
+      .optional(),
+    // Legacy alias from classic Trigger
+    triggerType: z
+      .enum(["webhook", "schedule", "manual", "signal", "integration"])
+      .optional(),
+    schedule: z.unknown().optional(),
+    webhookToken: optionalBoundedString(128, "Webhook token"),
+    authMode: z.enum(["none", "secret", "public"]).optional(),
+    secretName: optionalBoundedString(RESOURCE_NAME_MAX_LENGTH, "Secret"),
+    publicApiKey: optionalBoundedString(512, "Public API key"),
+    service: optionalBoundedString(64, "Service"),
+    provider: optionalBoundedString(64, "Provider"),
+    operation: optionalBoundedString(64, "Operation"),
     outputFieldDefs: z.array(outputFieldDefSchema).optional(),
   })
+  .passthrough()
   .superRefine((config, ctx) => {
+    const mode = config.triggerMode ?? config.triggerType
+    if (mode === "schedule" && !isValidTriggerSchedule(config.schedule)) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Choose a date and exact time for the schedule (once or repeating).",
+        path: ["schedule"],
+      })
+    }
+
     const defs = config.outputFieldDefs ?? []
     if (defs.length > OUTPUT_FIELD_MAX_COUNT) {
       ctx.addIssue({
@@ -259,19 +290,6 @@ const externalToolConfigSchema = z
   })
   .passthrough()
 
-const apiTriggerConfigSchema = z
-  .object({
-    triggerMode: z
-      .enum(["webhook", "schedule", "manual", "signal"])
-      .optional(),
-    webhookToken: optionalBoundedString(128, "Webhook token"),
-    authMode: z.enum(["none", "secret", "public"]).optional(),
-    secretName: optionalBoundedString(RESOURCE_NAME_MAX_LENGTH, "Secret"),
-    publicApiKey: optionalBoundedString(512, "Public API key"),
-    outputFieldDefs: z.array(outputFieldDefSchema).optional(),
-  })
-  .passthrough()
-
 const httpRequestConfigSchema = z
   .object({
     method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
@@ -288,9 +306,9 @@ const httpRequestConfigSchema = z
   .passthrough()
 
 const NODE_CONFIG_SCHEMAS: Record<string, z.ZodTypeAny> = {
-  "trigger.workflow": triggerConfigSchema,
-  "trigger.external-tool": externalToolConfigSchema,
-  "trigger.api": apiTriggerConfigSchema,
+  "trigger.workflow": unifiedTriggerConfigSchema,
+  "trigger.external-tool": unifiedTriggerConfigSchema,
+  "trigger.api": unifiedTriggerConfigSchema,
   "integrations.external-tool": externalToolConfigSchema,
   "integrations.http-request": httpRequestConfigSchema,
   "action.code": codeConfigSchema,
@@ -352,10 +370,11 @@ export function validateNodeConfigForRun(
   }
 
   const catalogItemId = getCatalogItemId(node)
-  if (
-    catalogItemId === "trigger.external-tool" ||
+  const needsIntegration =
+    (isUnifiedTriggerCatalogId(catalogItemId) && isIntegrationTrigger(node)) ||
     catalogItemId === "integrations.external-tool"
-  ) {
+
+  if (needsIntegration) {
     const service = String(node.config.service ?? "")
     const provider = String(node.config.provider ?? "")
     const operation = String(node.config.operation ?? "")
@@ -391,6 +410,17 @@ export function validateNodeConfigForRun(
         ok: false,
         error: `${node.label.trim() || catalogItemId}: ${validation.message}`,
       }
+    }
+  }
+
+  if (
+    isUnifiedTriggerCatalogId(catalogItemId) &&
+    normalizeTriggerMode(node) === "schedule" &&
+    !isValidTriggerSchedule(node.config.schedule)
+  ) {
+    return {
+      ok: false,
+      error: `${node.label.trim() || catalogItemId}: Choose a date and exact time for the schedule.`,
     }
   }
 

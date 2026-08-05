@@ -1,14 +1,15 @@
-import { getCatalogItemId } from "@/lib/design/component-variant-definitions"
 import {
   describeApprovalTarget,
   getApprovalApproverType,
   type ApprovalApproverType,
 } from "@/lib/design/approval-config"
+import { getCatalogItemId } from "@/lib/design/component-variant-definitions"
 import { parseOutputFieldDefs, type OutputFieldType } from "@/lib/design/output-fields"
 import { formatWaitDuration, getWaitDurationMs } from "@/lib/design/wait-config"
 import { findTriggerNodes } from "@/lib/engine/graph-index"
 import type { Workflow, WorkflowNode } from "@/lib/domain/workflow"
 import { asStringArray } from "@/lib/design/upstream-fields"
+import { resolveTriggerDisplayLabel } from "@/lib/design/trigger-config"
 
 export type TriggerTestRequirement = {
   nodeId: string
@@ -39,21 +40,12 @@ export type WorkflowTestRequirements = {
 }
 
 function mapTriggerRequirement(node: WorkflowNode): TriggerTestRequirement {
-  const catalogItemId = getCatalogItemId(node)
   const defs = parseOutputFieldDefs(node.config)
-
-  let triggerType = String(node.config.triggerType ?? "manual")
-  if (catalogItemId === "trigger.api" && typeof node.config.triggerMode === "string") {
-    triggerType = node.config.triggerMode
-  }
-  if (catalogItemId === "trigger.external-tool") {
-    triggerType = String(node.config.operation ?? "receive")
-  }
 
   return {
     nodeId: node.id,
     nodeLabel: node.label,
-    triggerType,
+    triggerType: resolveTriggerDisplayLabel(node),
     outputFields:
       defs.length > 0
         ? defs

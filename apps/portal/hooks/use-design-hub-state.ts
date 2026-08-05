@@ -411,7 +411,9 @@ export function useDesignHubState(initialWorkflow: Workflow) {
   const applyTemplate = React.useCallback(
     (template: WorkflowTemplate, anchor: { x: number; y: number }) => {
       const graph = cloneWorkflowGraph(template.nodes, template.edges)
-      const positioned = offsetWorkflowGraphToAnchor(graph, anchor)
+      // Templates author their own lane grid; only fall back to auto-layout
+      // when a template ships without positions.
+      const positioned = offsetWorkflowGraphToAnchor(graph, anchor, false)
       applyGraph(positioned, template.name)
     },
     [applyGraph]

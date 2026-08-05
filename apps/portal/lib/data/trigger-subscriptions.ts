@@ -1,3 +1,4 @@
+import { isValidTriggerSchedule } from "@/lib/domain/trigger-schedule"
 import { createClient } from "@/utils/supabase/server"
 import { createAdminClient } from "@/utils/supabase/admin"
 import type { WorkflowNode } from "@/lib/domain/workflow"
@@ -5,6 +6,10 @@ import { getCatalogItemId } from "@/lib/design/component-variant-definitions"
 import { getSecretByName } from "@/lib/data/secrets"
 import type { OAuthTokenPayload, SecretMetadata } from "@/lib/domain/secret"
 import { ensureFreshOAuthToken } from "@/lib/integrations/auth/token-refresh"
+import {
+  isUnifiedTriggerCatalogId,
+  normalizeTriggerMode,
+} from "@/lib/design/trigger-config"
 
 export type TriggerSubscriptionRow = {
   id: string
@@ -41,7 +46,7 @@ function findTriggerNodes(nodes: WorkflowNode[]) {
 }
 
 /**
- * Sync trigger subscriptions after deploy: webhook tokens + email watches.
+ * Sync trigger subscriptions after deploy: webhooks, schedules, email watches.
  */
 export async function syncTriggerSubscriptions(input: {
   workflowId: string
@@ -61,18 +66,39 @@ export async function syncTriggerSubscriptions(input: {
 
   const triggers = findTriggerNodes(input.nodes)
   const created: TriggerSubscriptionRow[] = []
+  const deployedAt = new Date().toISOString()
 
   for (const node of triggers) {
     const catalogItemId = getCatalogItemId(node)
+    if (!isUnifiedTriggerCatalogId(catalogItemId)) {
+      continue
+    }
 
-    if (catalogItemId === "trigger.api") {
+    const mode = normalizeTriggerMode(node)
+
+    if (mode === "manual") {
+      continue
+    }
+
+    if (mode === "schedule") {
+      const scheduleRow = await insertScheduleSubscription({
+        supabase: auth.supabase,
+        userId: auth.userId,
+        workflowId: input.workflowId,
+        node,
+        deployedAt,
+      })
+      created.push(scheduleRow)
+      continue
+    }
+
+    if (mode === "webhook" || mode === "signal") {
       const token =
         typeof node.config.webhookToken === "string" &&
         node.config.webhookToken.trim()
           ? node.config.webhookToken.trim()
           : crypto.randomUUID()
 
-      // Persist token back onto the live graph via subscription metadata
       const { data, error } = await auth.supabase
         .from("workflow_trigger_subscriptions")
         .insert({
@@ -80,7 +106,7 @@ export async function syncTriggerSubscriptions(input: {
           workflow_id: input.workflowId,
           trigger_node_id: node.id,
           provider: "webhook",
-          operation: String(node.config.triggerMode ?? "webhook"),
+          operation: mode,
           webhook_token: token,
           status: "active",
           metadata: {
@@ -99,7 +125,7 @@ export async function syncTriggerSubscriptions(input: {
       continue
     }
 
-    if (catalogItemId === "trigger.external-tool") {
+    if (mode === "integration") {
       const provider = String(node.config.provider ?? "")
       const operation = String(node.config.operation ?? "")
       if (operation !== "receive") {
@@ -112,7 +138,7 @@ export async function syncTriggerSubscriptions(input: {
       const secretName = String(node.config.secretName ?? "").trim()
       if (!secretName) {
         throw new Error(
-          `External Tool trigger "${node.label}" needs a connected secret before deploy.`
+          `External tool trigger "${node.label}" needs a connected secret before deploy.`
         )
       }
 
@@ -138,7 +164,6 @@ export async function syncTriggerSubscriptions(input: {
       if (provider === "gmail") {
         const topic = process.env.GMAIL_PUBSUB_TOPIC
         if (!topic) {
-          // Allow deploy without Pub/Sub in local/dev — mark pending setup
           metadata.setupRequired = "GMAIL_PUBSUB_TOPIC"
           metadata.warning =
             "Gmail watch not registered. Set GMAIL_PUBSUB_TOPIC to enable inbound email."
@@ -199,6 +224,47 @@ export async function syncTriggerSubscriptions(input: {
   }
 
   return created
+}
+
+async function insertScheduleSubscription(input: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  userId: string
+  workflowId: string
+  node: WorkflowNode
+  deployedAt: string
+}): Promise<TriggerSubscriptionRow> {
+  const schedule = input.node.config.schedule
+
+  if (!isValidTriggerSchedule(schedule)) {
+    throw new Error(
+      `Schedule trigger "${input.node.label}" needs a date and exact time (once or repeating).`
+    )
+  }
+
+  const { data, error } = await input.supabase
+    .from("workflow_trigger_subscriptions")
+    .insert({
+      user_id: input.userId,
+      workflow_id: input.workflowId,
+      trigger_node_id: input.node.id,
+      provider: "schedule",
+      operation: "schedule",
+      status: "active",
+      metadata: {
+        schedule,
+        timezone: "local",
+        // Avoid immediately re-firing the current minute after redeploy.
+        lastFiredAt: input.deployedAt,
+      },
+    })
+    .select("*")
+    .single()
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Failed to register schedule trigger.")
+  }
+
+  return data as TriggerSubscriptionRow
 }
 
 async function registerGmailWatch(accessToken: string, topicName: string) {

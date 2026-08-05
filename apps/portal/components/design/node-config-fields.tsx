@@ -2,6 +2,7 @@
 
 import * as React from "react"
 
+import { SchedulePickerEditor } from "@/components/design/schedule-picker-editor"
 import {
   FieldEditTableEditor,
   FieldRenameTableEditor,
@@ -24,6 +25,11 @@ import {
 } from "@/lib/domain/data-table"
 import type { SecretKind, SecretSummary } from "@/lib/domain/secret"
 import { isSecretKind } from "@/lib/domain/secret"
+import { createDefaultTriggerSchedule, parseTriggerSchedule } from "@/lib/domain/trigger-schedule"
+import {
+  applyTriggerModeDefaults,
+  type TriggerMode,
+} from "@/lib/design/trigger-config"
 import {
   asEditRows,
   asRenameRows,
@@ -297,6 +303,11 @@ function ConfigField({
         />
       )
 
+    case "schedule-picker":
+      return (
+        <SchedulePickerEditor id={id} value={value} onChange={onChange} />
+      )
+
     case "boolean":
       return (
         <Toggle
@@ -498,6 +509,40 @@ export function NodeConfigFields({
     ) {
       return false
     }
+
+    const triggerMode =
+      typeof values.triggerMode === "string"
+        ? values.triggerMode
+        : typeof values.triggerType === "string"
+          ? values.triggerType
+          : undefined
+
+    if (
+      (field.type === "schedule-picker" || field.key === "schedule") &&
+      triggerMode !== "schedule"
+    ) {
+      return false
+    }
+
+    if (
+      field.type === "integration-config" &&
+      triggerMode !== "integration"
+    ) {
+      return false
+    }
+
+    if (
+      triggerMode !== "integration" &&
+      (field.key === "webhookToken" ||
+        field.key === "authMode" ||
+        field.key === "secretName" ||
+        field.key === "publicApiKey") &&
+      triggerMode !== "webhook" &&
+      triggerMode !== "signal"
+    ) {
+      return false
+    }
+
     return true
   })
 
@@ -519,6 +564,47 @@ export function NodeConfigFields({
     }
 
     onChange(field.key, next)
+
+    if (field.key === "triggerMode" || field.key === "triggerType") {
+      const mode = next as TriggerMode
+      if (
+        mode === "manual" ||
+        mode === "schedule" ||
+        mode === "webhook" ||
+        mode === "signal" ||
+        mode === "integration"
+      ) {
+        const defaults = applyTriggerModeDefaults(mode, {
+          ...values,
+          triggerMode: mode,
+        })
+        onChange("triggerMode", mode)
+        if (mode !== "integration") {
+          onChange("triggerType", mode)
+        }
+        if (mode === "schedule" && !parseTriggerSchedule(values.schedule)) {
+          onChange("schedule", createDefaultTriggerSchedule())
+        }
+        if (mode === "integration") {
+          onChange("service", defaults.service)
+          onChange("provider", defaults.provider)
+          onChange("operation", defaults.operation)
+          onChange("authMode", defaults.authMode)
+          onChange("outputFieldDefs", defaults.outputFieldDefs)
+          onChange("outputFields", defaults.outputFields)
+          onChange("outputFieldTypes", defaults.outputFieldTypes)
+        }
+        if (
+          (mode === "webhook" || mode === "signal") &&
+          !String(values.webhookToken ?? "").trim()
+        ) {
+          onChange("webhookToken", defaults.webhookToken)
+          if (!values.authMode) {
+            onChange("authMode", defaults.authMode ?? "none")
+          }
+        }
+      }
+    }
 
     if (field.key === "tableName" && typeof next === "string") {
       const table = findDataTableSummary(dataTables ?? [], next)

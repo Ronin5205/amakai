@@ -123,7 +123,7 @@ export async function POST(
       payload: {
         ...payload,
         triggeredAt: new Date().toISOString(),
-        triggerType: "webhook",
+        triggerType: subscription.operation || "webhook",
       },
       eventKey: idempotency ? `webhook:${idempotency}` : undefined,
     })

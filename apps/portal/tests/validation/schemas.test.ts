@@ -143,30 +143,34 @@ describe("workflow node config validation", () => {
     })
   })
 
-  it("allows an unconfigured external tool trigger draft", () => {
-    const variant = getDefaultVariantConfig("trigger.external-tool")
+  it("allows an unconfigured external-tool-mode trigger draft", () => {
+    const variant = getDefaultVariantConfig("trigger.workflow")
     const config: Record<string, unknown> = {
       ...getDefaultNodeConfig("trigger"),
       ...variant,
-      catalogItemId: "trigger.external-tool",
+      catalogItemId: "trigger.workflow",
+      triggerMode: "integration",
+      // Intentionally omit service wiring for the draft check
+      service: undefined,
+      provider: undefined,
+      operation: undefined,
     }
 
     expect(validateNodeConfig({
       id: "external-1",
-      label: "External Tool Trigger",
+      label: "Trigger",
       kind: "trigger",
       config,
     })).toEqual({ ok: true })
 
     expect(validateNodeConfigForRun({
       id: "external-1",
-      label: "External Tool Trigger",
+      label: "Trigger",
       kind: "trigger",
       config,
     })).toEqual({
       ok: false,
-      error:
-        "External Tool Trigger: Select a service, provider, and operation.",
+      error: "Trigger: Select a service, provider, and operation.",
     })
   })
 })

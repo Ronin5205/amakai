@@ -4,6 +4,7 @@ import {
   normalizeFieldEditRows,
 } from "@/lib/design/edit-fields"
 import { parseOutputFieldDefs } from "@/lib/design/output-fields"
+import { isUnifiedTriggerCatalogId } from "@/lib/design/trigger-config"
 import type { WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 
 export type UpstreamFieldOption = {
@@ -97,7 +98,7 @@ export function resolveNodeOutputFields(
     resolveNodeOutputFields(source, nodes, edges, visited)
   )
 
-  if (catalogItemId === "trigger.workflow") {
+  if (isUnifiedTriggerCatalogId(catalogItemId)) {
     const declared = parseOutputFieldDefs(node.config)
     if (declared.length > 0) {
       return declared.map((field) => field.name)
