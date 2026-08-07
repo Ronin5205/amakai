@@ -1,25 +1,70 @@
-import { createHash, randomBytes } from "node:crypto"
+import { createHmac, timingSafeEqual } from "node:crypto"
 
 import type { DestructiveConfirmation } from "@/lib/domain/ai"
 
-const pending = new Map<
-  string,
-  {
-    userId: string
-    toolName: string
-    payload: Record<string, unknown>
-    expiresAt: number
-  }
->()
-
 const TTL_MS = 10 * 60 * 1000
 
-function prune() {
-  const now = Date.now()
-  for (const [id, entry] of pending) {
-    if (entry.expiresAt <= now) {
-      pending.delete(id)
+export type SignedConfirmation = {
+  userId: string
+  toolName: string
+  payload: Record<string, unknown>
+  exp: number
+}
+
+function getConfirmationSecret(): string {
+  return (
+    process.env.AI_CONFIRMATION_SECRET ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    "amakai-dev-confirmation-secret"
+  )
+}
+
+function signConfirmation(data: SignedConfirmation): string {
+  const payload = Buffer.from(JSON.stringify(data)).toString("base64url")
+  const signature = createHmac("sha256", getConfirmationSecret())
+    .update(payload)
+    .digest("base64url")
+  return `${payload}.${signature}`
+}
+
+export function peekConfirmation(
+  confirmationId: string
+): SignedConfirmation | null {
+  const [payload, signature] = confirmationId.split(".")
+  if (!payload || !signature) {
+    return null
+  }
+
+  const expected = createHmac("sha256", getConfirmationSecret())
+    .update(payload)
+    .digest("base64url")
+
+  try {
+    const sigBuf = Buffer.from(signature)
+    const expectedBuf = Buffer.from(expected)
+    if (
+      sigBuf.length !== expectedBuf.length ||
+      !timingSafeEqual(sigBuf, expectedBuf)
+    ) {
+      return null
     }
+  } catch {
+    return null
+  }
+
+  try {
+    const data = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8")
+    ) as SignedConfirmation
+    if (!data?.userId || !data?.toolName || !data?.exp) {
+      return null
+    }
+    if (data.exp <= Date.now()) {
+      return null
+    }
+    return data
+  } catch {
+    return null
   }
 }
 
@@ -29,13 +74,11 @@ export function createConfirmationRequest(input: {
   summary: string
   payload: Record<string, unknown>
 }): DestructiveConfirmation {
-  prune()
-  const confirmationId = randomBytes(16).toString("hex")
-  pending.set(confirmationId, {
+  const confirmationId = signConfirmation({
     userId: input.userId,
     toolName: input.toolName,
     payload: input.payload,
-    expiresAt: Date.now() + TTL_MS,
+    exp: Date.now() + TTL_MS,
   })
 
   return {
@@ -52,17 +95,9 @@ export function consumeConfirmation(input: {
   confirmationId: string
   toolName: string
 }): Record<string, unknown> | null {
-  prune()
-  const entry = pending.get(input.confirmationId)
+  const entry = peekConfirmation(input.confirmationId)
   if (!entry) return null
   if (entry.userId !== input.userId) return null
   if (entry.toolName !== input.toolName) return null
-  pending.delete(input.confirmationId)
   return entry.payload
-}
-
-export function hashConfirmationPayload(
-  payload: Record<string, unknown>
-): string {
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex")
 }

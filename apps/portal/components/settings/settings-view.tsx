@@ -192,7 +192,9 @@ export function SettingsView({
       secretCount: 0,
     }))
     setActiveAction(null)
-    setSuccessMessage("Deleted all workflows, tables, and secrets.")
+    setSuccessMessage(
+      "Deleted all workflows, tables, secrets, and AI assistant chats."
+    )
     router.refresh()
   }
 
@@ -566,8 +568,8 @@ export function SettingsView({
         description={
           <>
             This permanently deletes all workflows, deployed versions, run
-            history, data tables, and secrets. Your account will remain signed
-            in.
+            history, data tables, secrets, and AI assistant chats. Your account
+            will remain signed in.
           </>
         }
         confirmLabel="Delete all data"
@@ -583,8 +585,9 @@ export function SettingsView({
         title="Delete account?"
         description={
           <>
-            This permanently deletes your account, all workflows, tables, and
-            production history. You will be signed out immediately.
+            This permanently deletes your account, all workflows, tables, AI
+            assistant chats, and production history. You will be signed out
+            immediately.
           </>
         }
         confirmLabel="Delete account"

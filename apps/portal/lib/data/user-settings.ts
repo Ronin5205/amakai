@@ -1,3 +1,4 @@
+import { deleteAllAiThreads } from "@/lib/data/ai-threads"
 import { getUsername } from "@/lib/auth/user"
 import { getBillingProfileForUser } from "@/lib/data/billing"
 import type {
@@ -101,11 +102,13 @@ export async function deleteAllUserData(): Promise<DeleteUserDataResult> {
   const deletedWorkflows = await deleteAllWorkflows()
   const deletedTables = await deleteAllDataTables()
   const deletedSecrets = await deleteAllSecrets()
+  const deletedAiChats = await deleteAllAiThreads()
 
   return {
     deletedWorkflows,
     deletedTables,
     deletedSecrets,
+    deletedAiChats,
   }
 }
 

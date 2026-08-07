@@ -6,7 +6,7 @@ export const OUTPUT_WEIGHT = 4
 
 /** Monthly token allowances by plan. */
 export const AI_TOKEN_ALLOWANCE: Record<"free" | "pro", number> = {
-  free: 2_000_000,
+  free: 1_000_000,
   pro: 10_000_000,
 }
 

@@ -28,7 +28,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
     features: [
       "Up to 10 workflows",
       "Up to 10 data tables",
-      "2,000 AI credits / month",
+      "1,000 AI credits / month",
       "Secrets vault",
       "Production runs and logs",
     ],

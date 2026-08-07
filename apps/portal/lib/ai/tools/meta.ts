@@ -8,6 +8,9 @@ export const READ_TOOL_META = [
   { name: "list_data_tables", safety: "read" as const },
   { name: "get_data_table_schema", safety: "read" as const },
   { name: "list_component_catalog", safety: "read" as const },
+  { name: "list_integration_catalog", safety: "read" as const },
+  { name: "get_workflow_build_guide", safety: "read" as const },
+  { name: "check_workflow_prerequisites", safety: "read" as const },
   { name: "list_secret_names", safety: "read" as const },
   { name: "get_recent_executions", safety: "read" as const },
 ] satisfies Array<{ name: string; safety: AiToolSafety }>

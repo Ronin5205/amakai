@@ -10,9 +10,19 @@ import { hashChunkContent, chunkMarkdownDocument } from "@/lib/ai/chunking"
 import { ASSISTANT_ALLOWED_SAFETY, isToolAllowed } from "@/lib/ai/tools/types"
 import { ALL_TOOL_META } from "@/lib/ai/tools/meta"
 import {
+  normalizeAiWorkflowGraphInput,
   validateAiWorkflowGraph,
   validateAiWorkflowGraphWithRepair,
 } from "@/lib/ai/graph-validation"
+import type { AiWorkflowGraphInput } from "@/lib/ai/graph-validation"
+import { enrichAiWorkflowGraph } from "@/lib/ai/workflow-graph-enrichment"
+import { getWorkflowBuildGuide } from "@/lib/ai/workflow-build-guide"
+import {
+  consumeConfirmation,
+  createConfirmationRequest,
+  peekConfirmation,
+} from "@/lib/ai/tools/confirmation"
+import { selectExcessThreadIds } from "@/lib/domain/ai"
 
 function toolsAllowedForAssistant() {
   return ALL_TOOL_META.filter((entry) =>
@@ -23,6 +33,15 @@ function toolsAllowedForAssistant() {
 function getToolSafety(name: string) {
   return ALL_TOOL_META.find((entry) => entry.name === name)?.safety ?? null
 }
+
+describe("ai thread limits", () => {
+  it("selects oldest threads to prune when over the active limit", () => {
+    const ids = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"]
+    expect(selectExcessThreadIds(ids, 10, 1)).toEqual(["a", "b"])
+    expect(selectExcessThreadIds(ids, 10, 0)).toEqual(["a"])
+    expect(selectExcessThreadIds(ids.slice(0, 10), 10, 1)).toEqual(["a"])
+  })
+})
 
 describe("ai quota math", () => {
   it("weights output tokens", () => {
@@ -38,7 +57,7 @@ describe("ai quota math", () => {
       periodStart: "2026-08-01",
     })
     expect(snapshot.allowanceTokens).toBe(AI_TOKEN_ALLOWANCE.free)
-    expect(snapshot.remainingTokens).toBe(1_500_000)
+    expect(snapshot.remainingTokens).toBe(500_000)
     expect(snapshot.usedCredits).toBe(tokensToCredits(500_000))
     expect(snapshot.exhausted).toBe(false)
   })
@@ -81,6 +100,7 @@ describe("ai tool safety", () => {
     expect(allowed).toContain("ask_clarification")
     expect(allowed).toContain("create_workflow")
     expect(allowed).toContain("deploy_workflow")
+    expect(allowed).toContain("get_workflow_build_guide")
   })
 
   it("exposes correct safety metadata", () => {
@@ -109,7 +129,160 @@ describe("chunk hashing idempotency", () => {
   })
 })
 
+describe("confirmation tokens", () => {
+  it("creates and verifies signed confirmation tokens", () => {
+    const request = createConfirmationRequest({
+      userId: "user-1",
+      toolName: "deploy_workflow",
+      summary: "Deploy test workflow",
+      payload: { workflowId: "wf-1" },
+    })
+
+    expect(request.requiresConfirmation).toBe(true)
+    expect(request.confirmationId.length).toBeGreaterThan(20)
+
+    const peeked = peekConfirmation(request.confirmationId)
+    expect(peeked?.userId).toBe("user-1")
+    expect(peeked?.toolName).toBe("deploy_workflow")
+
+    const payload = consumeConfirmation({
+      userId: "user-1",
+      confirmationId: request.confirmationId,
+      toolName: "deploy_workflow",
+    })
+    expect(payload).toEqual({ workflowId: "wf-1" })
+  })
+
+  it("rejects tokens for the wrong user or tool", () => {
+    const request = createConfirmationRequest({
+      userId: "user-1",
+      toolName: "deploy_workflow",
+      summary: "Deploy test workflow",
+      payload: { workflowId: "wf-1" },
+    })
+
+    expect(
+      consumeConfirmation({
+        userId: "user-2",
+        confirmationId: request.confirmationId,
+        toolName: "deploy_workflow",
+      })
+    ).toBeNull()
+
+    expect(
+      consumeConfirmation({
+        userId: "user-1",
+        confirmationId: request.confirmationId,
+        toolName: "delete_workflow",
+      })
+    ).toBeNull()
+  })
+})
+
 describe("graph validation repair loop", () => {
+  it("normalizes Gmail-style trigger labels to integration mode", () => {
+    const normalized = normalizeAiWorkflowGraphInput({
+      nodes: [
+        {
+          id: "trigger-1",
+          label: "Gmail trigger",
+          kind: "trigger",
+          config: {
+            catalogItemId: "trigger.workflow",
+            triggerMode: "manual",
+          },
+        },
+      ],
+      edges: [],
+    }) as {
+      nodes: Array<{ config: Record<string, unknown> }>
+    }
+
+    expect(normalized.nodes[0].config.triggerMode).toBe("integration")
+    expect(normalized.nodes[0].config.service).toBe("email")
+    expect(normalized.nodes[0].config.provider).toBe("gmail")
+    expect(normalized.nodes[0].config.operation).toBe("receive")
+  })
+
+  it("requires secrets on integration email triggers", () => {
+    const result = validateAiWorkflowGraph({
+      nodes: [
+        {
+          id: "trigger-1",
+          label: "Gmail trigger",
+          kind: "trigger",
+          config: {
+            catalogItemId: "trigger.workflow",
+            triggerMode: "integration",
+            service: "email",
+            provider: "gmail",
+            operation: "receive",
+            authMode: "secret",
+          },
+        },
+      ],
+      edges: [],
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(
+        result.issues.some((issue) => /secret|mailbox/i.test(issue))
+      ).toBe(true)
+    }
+  })
+
+  it("normalizes common AI graph mistakes before validation", () => {
+    const result = validateAiWorkflowGraph({
+      nodes: [
+        {
+          id: "trigger-1",
+          label: "Email",
+          kind: "trigger",
+          catalogItemId: "trigger.workflow",
+          config: { triggerMode: "email" },
+        },
+        {
+          id: "edit-1",
+          label: "Edit",
+          kind: "action",
+          config: { catalogItemId: "action.edit-fields", fieldCount: 1 },
+        },
+      ],
+      edges: [{ id: "e1", source: "trigger-1", target: "edit-1" }],
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      const normalized = normalizeAiWorkflowGraphInput({
+        nodes: [
+          {
+            id: "trigger-1",
+            label: "Email",
+            kind: "trigger",
+            catalogItemId: "trigger.workflow",
+            config: { triggerMode: "email" },
+          },
+          {
+            id: "edit-1",
+            label: "Edit",
+            kind: "action",
+            config: { catalogItemId: "action.edit-fields", fieldCount: 1 },
+          },
+        ],
+        edges: [{ id: "e1", source: "trigger-1", target: "edit-1" }],
+      }) as {
+        nodes: Array<{ kind: string; config: Record<string, unknown> }>
+      }
+
+      expect(normalized.nodes[0].config.triggerMode).toBe("integration")
+      expect(normalized.nodes[1].kind).toBe("sequential")
+      expect(result.issues.some((issue) => /secret|mailbox/i.test(issue))).toBe(
+        true
+      )
+    }
+  })
+
   it("rejects unknown catalog ids", () => {
     const result = validateAiWorkflowGraph({
       nodes: [
@@ -128,6 +301,20 @@ describe("graph validation repair loop", () => {
         result.issues.some((issue) => /Unknown catalogItemId/.test(issue))
       ).toBe(true)
     }
+  })
+
+  it("enriches graphs with layout and edge ports", () => {
+    const guide = getWorkflowBuildGuide()
+    expect(guide.example.nodes.length).toBeGreaterThanOrEqual(3)
+    expect(guide.privileges.canCreateDataTables).toBe(true)
+
+    const enriched = enrichAiWorkflowGraph(
+      guide.example as unknown as AiWorkflowGraphInput
+    )
+    expect(enriched.nodes[0].position).toBeDefined()
+    expect(enriched.edges[0].sourcePort).toBe("main-out")
+    expect(enriched.edges[0].targetPort).toBe("input-1")
+    expect(enriched.edges[1].targetPort).toBe("main-in")
   })
 
   it("repairs invalid graphs within the retry budget", async () => {

@@ -4,6 +4,15 @@ import {
 } from "@/lib/design/component-catalog"
 import { COMPONENT_VARIANT_SPECS } from "@/lib/design/component-variant-definitions"
 import { NODE_DEFINITIONS } from "@/lib/design/node-definitions"
+import { INTEGRATION_SERVICES } from "@/lib/integrations/registry"
+import {
+  COMPONENT_BUILD_HINTS,
+  WORKFLOW_BUILD_RULES,
+} from "@/lib/ai/workflow-build-rules"
+import {
+  getWorkflowBuildGuide,
+  GMAIL_INBOX_TO_TABLE_EXAMPLE,
+} from "@/lib/ai/workflow-build-guide"
 import type { KnowledgeChunkDraft } from "@/lib/ai/chunking"
 
 /** Generate RAG chunks from the live component catalog / node definitions. */
@@ -46,6 +55,9 @@ export function buildCatalogKnowledgeChunks(): KnowledgeChunkDraft[] {
         `Category: ${item.categoryId}`,
         `Label: ${item.label}`,
         `Description: ${item.description}`,
+        COMPONENT_BUILD_HINTS[item.id]
+          ? `Build hint: ${COMPONENT_BUILD_HINTS[item.id]}`
+          : "",
         item.defaultConfig
           ? `Default config keys: ${Object.keys(item.defaultConfig).join(", ")}`
           : "",
@@ -53,6 +65,43 @@ export function buildCatalogKnowledgeChunks(): KnowledgeChunkDraft[] {
       ]
         .filter(Boolean)
         .join("\n"),
+    })
+  }
+
+  chunks.push({
+    source: "catalog:workflow-build",
+    heading: "Workflow build rules for the assistant",
+    content: WORKFLOW_BUILD_RULES,
+  })
+
+  const guide = getWorkflowBuildGuide()
+  chunks.push({
+    source: "catalog:workflow-example",
+    heading: "Example workflow: Gmail inbox to data table",
+    content: JSON.stringify(GMAIL_INBOX_TO_TABLE_EXAMPLE, null, 2),
+  })
+
+  chunks.push({
+    source: "catalog:workflow-privileges",
+    heading: "Assistant resource privileges",
+    content: JSON.stringify(guide.privileges, null, 2),
+  })
+
+  for (const service of INTEGRATION_SERVICES) {
+    chunks.push({
+      source: "catalog:integrations",
+      heading: `Integration service: ${service.label}`,
+      content: [
+        `Service id: ${service.id}`,
+        service.description,
+        ...service.providers.flatMap((provider) =>
+          provider.operations.map(
+            (operation) =>
+              `Provider ${provider.id}: operation ${operation.id} (${operation.nodeKind}) — ${operation.description}`
+          )
+        ),
+        "Inbound Gmail/Outlook email uses trigger.workflow triggerMode=integration, not integrations.external-tool.",
+      ].join("\n"),
     })
   }
 

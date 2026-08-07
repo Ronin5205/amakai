@@ -6,7 +6,7 @@ export function createPlanningTools() {
   return {
     ask_clarification: tool({
       description:
-        "Ask the user clarifying questions before creating tables or workflows. Required before propose_build_plan.",
+        "Ask the user clarifying questions before creating tables or workflows. Use when intent or column/table names are unclear.",
       inputSchema: z.object({
         questions: z
           .array(
@@ -36,7 +36,7 @@ export function createPlanningTools() {
 
     propose_build_plan: tool({
       description:
-        "Propose a build plan for the user to approve before executing write tools.",
+        "Propose a build plan for the user to approve before executing write tools. Include create_data_table / create_workflow / apply_workflow_graph steps. Only block on missing OAuth secrets.",
       inputSchema: z.object({
         title: z.string().min(1).max(120),
         summary: z.string().min(1).max(800),

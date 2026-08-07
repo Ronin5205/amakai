@@ -16,7 +16,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@amakai/shared/components/ui/breadcrumb"
-import { Separator } from "@amakai/shared/components/ui/separator"
 import { SidebarTrigger } from "@amakai/shared/components/ui/sidebar"
 import { cn } from "@amakai/shared/lib/utils"
 
@@ -43,7 +42,6 @@ export function PortalHeader() {
       )}
     >
       <SidebarTrigger />
-      <Separator orientation="vertical" className="me-2 h-4" />
 
       <Breadcrumb className="min-w-0 flex-1">
         <BreadcrumbList>

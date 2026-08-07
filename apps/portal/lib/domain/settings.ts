@@ -19,4 +19,5 @@ export type DeleteUserDataResult = {
   deletedWorkflows: number
   deletedTables: number
   deletedSecrets: number
+  deletedAiChats: number
 }

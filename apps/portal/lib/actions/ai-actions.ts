@@ -1,7 +1,11 @@
 "use server"
 
 import { getAiQuotaSnapshot } from "@/lib/data/ai-usage"
-import { listAiMessages, listAiThreads } from "@/lib/data/ai-threads"
+import {
+  deleteAiThread,
+  listAiMessages,
+  listAiThreads,
+} from "@/lib/data/ai-threads"
 
 export async function getAiQuotaAction() {
   try {
@@ -37,6 +41,18 @@ export async function getAiThreadMessagesAction(threadId: string) {
         error instanceof Error
           ? error.message
           : "Failed to load AI messages.",
+    }
+  }
+}
+
+export async function deleteAiThreadAction(threadId: string) {
+  try {
+    await deleteAiThread(threadId)
+    return { ok: true as const }
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Failed to delete AI thread.",
     }
   }
 }

@@ -14,21 +14,33 @@ import {
   ClockCounterClockwiseIcon,
   PlusIcon,
   SparkleIcon,
+  TrashIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react"
 
 import { useAssistant } from "@/components/ai/assistant-provider"
+import { AssistantMessageContent } from "@/components/ai/assistant-message-content"
 import {
   AssistantStreamCursor,
   AssistantTypingIndicator,
 } from "@/components/ai/assistant-typing"
+import { ClarificationQuestions } from "@/components/ai/clarification-questions"
 import { useWorkflowEditorContext } from "@/components/ai/workflow-editor-context"
 import {
+  deleteAiThreadAction,
   getAiThreadMessagesAction,
   listAiThreadsAction,
 } from "@/lib/actions/ai-actions"
 import type { AiStoredMessage, AiThreadSummary } from "@/lib/domain/ai"
 import { Button } from "@amakai/shared/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@amakai/shared/components/ui/dialog"
 import {
   Sheet,
   SheetContent,
@@ -77,20 +89,48 @@ function formatThreadTime(iso: string): string {
   })
 }
 
+function formatToolCardBody(
+  output: Record<string, unknown> | null,
+  state: string
+): { body?: string; failed?: boolean } {
+  if (output?.ok === false) {
+    const issues = Array.isArray(output.issues)
+      ? (output.issues as string[]).slice(0, 5)
+      : []
+    const lines = [String(output.error ?? "Failed")]
+    if (issues.length > 0) {
+      lines.push(...issues)
+    }
+    return { body: lines.join("\n"), failed: true }
+  }
+
+  if (typeof output?.error === "string" && output.ok !== true) {
+    return { body: output.error, failed: true }
+  }
+
+  if (state === "output-available") {
+    return { body: "Done" }
+  }
+
+  return { body: state }
+}
+
 function extractToolCards(message: UIMessage) {
   const cards: Array<{
     key: string
     kind: "tool" | "clarification" | "plan" | "confirm" | "live_patch"
     title: string
     body?: string
+    failed?: boolean
     data?: Record<string, unknown>
   }> = []
 
-  for (const part of message.parts ?? []) {
+  for (const [partIndex, part] of (message.parts ?? []).entries()) {
     if (!part.type.startsWith("tool-") && part.type !== "dynamic-tool") {
       continue
     }
 
+    const partKey = `${message.id}-part-${partIndex}`
     const toolName =
       "toolName" in part
         ? String(part.toolName)
@@ -102,7 +142,7 @@ function extractToolCards(message: UIMessage) {
 
     if (output?.kind === "clarification" && Array.isArray(output.questions)) {
       cards.push({
-        key: `${message.id}-clarification`,
+        key: partKey,
         kind: "clarification",
         title: "Clarifying questions",
         data: { questions: output.questions },
@@ -112,7 +152,7 @@ function extractToolCards(message: UIMessage) {
 
     if (output?.kind === "build_plan" && output.plan) {
       cards.push({
-        key: `${message.id}-plan`,
+        key: partKey,
         kind: "plan",
         title: "Build plan",
         data: { plan: output.plan as Record<string, unknown> },
@@ -122,7 +162,7 @@ function extractToolCards(message: UIMessage) {
 
     if (output?.requiresConfirmation) {
       cards.push({
-        key: `${message.id}-confirm-${toolName}`,
+        key: partKey,
         kind: "confirm",
         title: "Confirmation required",
         body: String(output.summary ?? toolName),
@@ -140,7 +180,7 @@ function extractToolCards(message: UIMessage) {
       (output.livePatch as { kind?: string }).kind === "live_graph_patch"
     ) {
       cards.push({
-        key: `${message.id}-patch`,
+        key: partKey,
         kind: "live_patch",
         title: "Graph ready for canvas",
         data: { livePatch: output.livePatch as Record<string, unknown> },
@@ -149,11 +189,13 @@ function extractToolCards(message: UIMessage) {
     }
 
     const state = "state" in part ? String(part.state) : "unknown"
+    const toolBody = formatToolCardBody(output, state)
     cards.push({
-      key: `${message.id}-${toolName}-${state}`,
+      key: partKey,
       kind: "tool",
       title: toolName.replaceAll("_", " "),
-      body: state === "output-available" ? "Done" : state,
+      body: toolBody.body,
+      failed: toolBody.failed,
     })
   }
 
@@ -179,6 +221,9 @@ export function AssistantPanel() {
   const [threads, setThreads] = React.useState<AiThreadSummary[]>([])
   const [threadsLoading, setThreadsLoading] = React.useState(false)
   const [threadLoading, setThreadLoading] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] =
+    React.useState<AiThreadSummary | null>(null)
+  const [deleting, setDeleting] = React.useState(false)
   const [draftChatId, setDraftChatId] = React.useState(() => crypto.randomUUID())
   const messagesRef = React.useRef<HTMLDivElement>(null)
   const appliedPatchesRef = React.useRef<Set<string>>(new Set())
@@ -224,7 +269,9 @@ export function AssistantPanel() {
             id,
             messages,
             threadId: threadIdRef.current,
-            confirmationToken: confirmationTokenRef.current,
+            confirmationToken:
+              (body as { confirmationToken?: string | null } | undefined)
+                ?.confirmationToken ?? confirmationTokenRef.current,
             editor: editorRef.current.isActive
               ? {
                   workflowId: editorRef.current.workflowId,
@@ -326,6 +373,30 @@ export function AssistantPanel() {
     setAssistantStatus("idle")
   }, [setConfirmationToken, setMessages, setAssistantStatus, setThreadId])
 
+  const handleDeleteThread = React.useCallback(async () => {
+    if (!deleteTarget || deleting) return
+    setDeleting(true)
+    try {
+      const result = await deleteAiThreadAction(deleteTarget.id)
+      if (result.error) return
+
+      setThreads((current) =>
+        current.filter((thread) => thread.id !== deleteTarget.id)
+      )
+      if (threadId === deleteTarget.id) {
+        setThreadId(null)
+        setDraftChatId(crypto.randomUUID())
+        setMessages([])
+        setConfirmationToken(null)
+        setInput("")
+        setAssistantStatus("idle")
+      }
+      setDeleteTarget(null)
+    } finally {
+      setDeleting(false)
+    }
+  }, [deleteTarget, deleting, setConfirmationToken, setMessages, setAssistantStatus, setThreadId, threadId])
+
   const handleSelectThread = React.useCallback(
     async (nextThreadId: string) => {
       if (busy) return
@@ -351,23 +422,37 @@ export function AssistantPanel() {
     ]
   )
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (
+    text: string,
+    options?: { confirmationToken?: string }
+  ) => {
     const trimmed = text.trim()
     if (!trimmed || busy) return
     if (quota?.exhausted) {
       setAssistantStatus("quota-exhausted")
       return
     }
+
+    const token = options?.confirmationToken?.trim()
+    if (token) {
+      confirmationTokenRef.current = token
+      setConfirmationToken(token)
+    }
+
     setInput("")
     setShowHistory(false)
     setAssistantStatus("listening")
-    await sendMessage({ text: trimmed })
+    await sendMessage({
+      text: trimmed,
+      body: token ? { confirmationToken: token } : undefined,
+    })
   }
 
   const activeTitle =
     threads.find((thread) => thread.id === threadId)?.title ?? "New chat"
 
   return (
+    <>
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetContent
         side="right"
@@ -446,13 +531,13 @@ export function AssistantPanel() {
                     {threads.map((thread) => {
                       const active = thread.id === threadId
                       return (
-                        <li key={thread.id}>
+                        <li key={thread.id} className="group flex items-center gap-1">
                           <button
                             type="button"
-                            disabled={busy || threadLoading}
+                            disabled={busy || threadLoading || deleting}
                             onClick={() => void handleSelectThread(thread.id)}
                             className={cn(
-                              "flex w-full flex-col gap-0.5 rounded-lg px-3 py-2.5 text-left transition-colors",
+                              "flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-3 py-2.5 text-left transition-colors",
                               active
                                 ? "bg-muted"
                                 : "hover:bg-muted/70"
@@ -465,6 +550,17 @@ export function AssistantPanel() {
                               {formatThreadTime(thread.updatedAt)}
                             </span>
                           </button>
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            className="shrink-0 text-muted-foreground hover:text-destructive"
+                            aria-label={`Delete ${thread.title || "chat"}`}
+                            disabled={busy || threadLoading || deleting}
+                            onClick={() => setDeleteTarget(thread)}
+                          >
+                            <TrashIcon />
+                          </Button>
                         </li>
                       )
                     })}
@@ -514,9 +610,12 @@ export function AssistantPanel() {
                       </div>
                     ) : null}
 
-                    {messages.map((message) => {
+                    {messages.map((message, messageIndex) => {
                       const text = messageText(message)
                       const cards = extractToolCards(message)
+                      const hasUserReplyAfter = messages
+                        .slice(messageIndex + 1)
+                        .some((entry) => entry.role === "user")
                       const isStreamingThisMessage =
                         status === "streaming" &&
                         message.role === "assistant" &&
@@ -526,7 +625,7 @@ export function AssistantPanel() {
                         <div
                           key={message.id}
                           className={cn(
-                            "flex flex-col gap-2",
+                            "flex min-w-0 flex-col gap-2",
                             message.role === "user"
                               ? "items-end"
                               : "items-start"
@@ -535,13 +634,20 @@ export function AssistantPanel() {
                           {text ? (
                             <div
                               className={cn(
-                                "max-w-[92%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
+                                "max-w-[92%] min-w-0 rounded-lg px-3 py-2",
                                 message.role === "user"
                                   ? "bg-primary text-primary-foreground"
                                   : "bg-muted"
                               )}
                             >
-                              {text}
+                              <AssistantMessageContent
+                                className={cn(
+                                  message.role === "user" &&
+                                    "[&_code]:bg-primary-foreground/15"
+                                )}
+                              >
+                                {text}
+                              </AssistantMessageContent>
                               {isStreamingThisMessage ? (
                                 <AssistantStreamCursor />
                               ) : null}
@@ -551,13 +657,20 @@ export function AssistantPanel() {
                           {cards.map((card) => (
                             <div
                               key={card.key}
-                              className="w-full max-w-[92%] rounded-lg border bg-background p-2.5 text-xs"
+                              className="w-full min-w-0 max-w-[92%] overflow-hidden rounded-lg border bg-background p-2.5 text-xs"
                             >
                               <p className="mb-1 font-medium capitalize">
                                 {card.title}
                               </p>
                               {card.body ? (
-                                <p className="text-muted-foreground">
+                                <p
+                                  className={cn(
+                                    "whitespace-pre-wrap",
+                                    card.failed
+                                      ? "text-destructive"
+                                      : "text-muted-foreground"
+                                  )}
+                                >
                                   {card.body}
                                 </p>
                               ) : null}
@@ -565,41 +678,21 @@ export function AssistantPanel() {
                               {card.kind === "clarification" &&
                               Array.isArray(card.data?.questions)
                                 ? (
-                                    card.data.questions as Array<{
-                                      id: string
-                                      question: string
-                                      options?: Array<{
-                                        id: string
-                                        label: string
-                                      }>
-                                    }>
-                                  ).map((question) => (
-                                    <div
-                                      key={question.id}
-                                      className="mt-2 space-y-1.5"
-                                    >
-                                      <p>{question.question}</p>
-                                      <div className="flex flex-wrap gap-1">
-                                        {(question.options ?? []).map(
-                                          (option) => (
-                                            <Button
-                                              key={option.id}
-                                              size="sm"
-                                              variant="outline"
-                                              disabled={busy}
-                                              onClick={() =>
-                                                void handleSend(
-                                                  `${question.question} → ${option.label}`
-                                                )
-                                              }
-                                            >
-                                              {option.label}
-                                            </Button>
-                                          )
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))
+                                    <ClarificationQuestions
+                                      questions={
+                                        card.data.questions as Array<{
+                                          id: string
+                                          question: string
+                                          options?: Array<{
+                                            id: string
+                                            label: string
+                                          }>
+                                        }>
+                                      }
+                                      disabled={busy || hasUserReplyAfter}
+                                      onSubmit={handleSend}
+                                    />
+                                  )
                                 : null}
 
                               {card.kind === "plan" && card.data?.plan ? (
@@ -673,11 +766,12 @@ export function AssistantPanel() {
                                     size="sm"
                                     disabled={busy}
                                     onClick={() => {
-                                      setConfirmationToken(
-                                        String(card.data?.confirmationId ?? "")
+                                      const token = String(
+                                        card.data?.confirmationId ?? ""
                                       )
                                       void handleSend(
-                                        `Confirm ${String(card.data?.toolName ?? "action")} with the pending confirmation token.`
+                                        `Confirm ${String(card.data?.toolName ?? "action")}.`,
+                                        { confirmationToken: token }
                                       )
                                     }}
                                   >
@@ -730,13 +824,13 @@ export function AssistantPanel() {
               </div>
 
               <div className="shrink-0 border-t p-3">
-                <div className="flex items-end gap-2">
+                <div className="relative min-w-0">
                   <Textarea
                     value={input}
                     onChange={(event) => setInput(event.target.value)}
                     placeholder="Ask, get guidance, or request builds…"
-                    rows={2}
-                    className="min-h-[2.75rem] resize-none"
+                    rows={1}
+                    className="min-h-10 max-h-40 resize-none py-2.5 pl-2.5 pr-11"
                     disabled={busy || Boolean(quota?.exhausted) || threadLoading}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
@@ -745,31 +839,33 @@ export function AssistantPanel() {
                       }
                     }}
                   />
-                  {busy ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      onClick={() => stop()}
-                      aria-label="Stop"
-                    >
-                      <CircleNotchIcon className="animate-spin" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="icon"
-                      disabled={
-                        !input.trim() ||
-                        Boolean(quota?.exhausted) ||
-                        threadLoading
-                      }
-                      onClick={() => void handleSend(input)}
-                      aria-label="Send"
-                    >
-                      <ArrowUpIcon />
-                    </Button>
-                  )}
+                  <div className="absolute bottom-1.5 right-1.5">
+                    {busy ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={() => stop()}
+                        aria-label="Stop"
+                      >
+                        <CircleNotchIcon className="animate-spin" />
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="icon"
+                        disabled={
+                          !input.trim() ||
+                          Boolean(quota?.exhausted) ||
+                          threadLoading
+                        }
+                        onClick={() => void handleSend(input)}
+                        aria-label="Send"
+                      >
+                        <ArrowUpIcon />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             </>
@@ -777,5 +873,44 @@ export function AssistantPanel() {
         </div>
       </SheetContent>
     </Sheet>
+
+    <Dialog
+      open={Boolean(deleteTarget)}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !deleting) setDeleteTarget(null)
+      }}
+    >
+      <DialogContent showCloseButton={!deleting}>
+        <DialogHeader>
+          <DialogTitle>Delete chat?</DialogTitle>
+          <DialogDescription>
+            <span className="font-medium text-foreground">
+              {deleteTarget?.title || "New chat"}
+            </span>{" "}
+            will be permanently deleted. This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={deleting}
+            onClick={() => setDeleteTarget(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={deleting}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => void handleDeleteThread()}
+          >
+            <TrashIcon data-icon="inline-start" />
+            {deleting ? "Deleting…" : "Delete chat"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

@@ -18,6 +18,21 @@ export type AiOrbState = AiAssistantStatus
 
 export type AiUsageKind = "chat" | "embedding"
 
+/** Maximum saved assistant conversations per user. Oldest are removed when exceeded. */
+export const MAX_ACTIVE_AI_THREADS = 10
+
+/** Oldest thread ids to delete so count stays within the active limit. */
+export function selectExcessThreadIds(
+  orderedThreadIds: string[],
+  maxThreads = MAX_ACTIVE_AI_THREADS,
+  reserveSlots = 0
+): string[] {
+  const allowed = maxThreads - reserveSlots
+  const excess = orderedThreadIds.length - allowed
+  if (excess <= 0) return []
+  return orderedThreadIds.slice(0, excess)
+}
+
 export type AiQuotaSnapshot = {
   plan: PlanTier
   periodStart: string

@@ -147,15 +147,15 @@ export function NodePalettePanel({
           >
             {filteredGroups.map((group) => (
               <AccordionItem key={group.id} value={group.id}>
-                <AccordionTrigger className="px-3 py-3 hover:no-underline">
-                  <div className="flex min-w-0 flex-1 items-center justify-between gap-2 pe-2">
-                    <div className="flex min-w-0 flex-col items-start gap-0.5">
+                <AccordionTrigger className="items-center px-3 py-3 hover:no-underline">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 pe-1">
+                    <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
                       <span className="text-xs font-medium">{group.label}</span>
                       <span className="text-[11px] font-normal text-muted-foreground">
                         {group.description}
                       </span>
                     </div>
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                       {group.items.length}
                     </span>
                   </div>

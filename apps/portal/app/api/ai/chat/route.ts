@@ -8,6 +8,11 @@ import {
 
 import { getChatModel, getChatModelId, requireGeminiApiKey } from "@/lib/ai/models"
 import { buildSystemPrompt } from "@/lib/ai/system-prompt"
+import { peekConfirmation } from "@/lib/ai/tools/confirmation"
+import {
+  executeConfirmedDestructiveAction,
+  isConfirmationUserMessage,
+} from "@/lib/ai/tools/execute-confirmed"
 import { createAssistantTools } from "@/lib/ai/tools"
 import {
   AiQuotaExhaustedError,
@@ -122,20 +127,75 @@ export async function POST(request: Request) {
         : null,
     })
 
+    const confirmationToken = body.confirmationToken?.trim() ?? ""
+    if (confirmationToken && isConfirmationUserMessage(userText)) {
+      const actionResult = await executeConfirmedDestructiveAction({
+        userId: user.id,
+        confirmationToken,
+      })
+
+      const assistantText = actionResult.ok
+        ? actionResult.summary
+        : actionResult.error
+
+      const result = streamText({
+        model: getChatModel(),
+        system:
+          "You are Amakai Assistant. Report the action result to the user in one short paragraph.",
+        prompt: assistantText,
+        onFinish: async ({ usage }) => {
+          await recordAiUsage({
+            userId: user.id,
+            kind: "chat",
+            model: getChatModelId(),
+            inputTokens: usage?.inputTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
+            threadId: thread.id,
+          }).catch(() => {})
+
+          await appendAiMessage({
+            threadId: thread.id,
+            role: "assistant",
+            content: assistantText,
+          }).catch(() => {})
+        },
+      })
+
+      return result.toUIMessageStreamResponse({
+        headers: {
+          "x-ai-thread-id": thread.id,
+          "x-ai-quota-remaining-credits": String(
+            Math.floor(quota.remainingCredits)
+          ),
+        },
+      })
+    }
+
+    const pendingConfirmation = confirmationToken
+      ? peekConfirmation(confirmationToken)
+      : null
+
     const result = streamText({
       model: getChatModel(),
-      system: buildSystemPrompt({
-        editorContext: body.editor
-          ? {
-              workflowId: body.editor.workflowId,
-              selectedNodeId: body.editor.selectedNodeId,
-              nodeCount: body.editor.nodeCount,
-            }
-          : null,
-      }),
+      system: [
+        buildSystemPrompt({
+          editorContext: body.editor
+            ? {
+                workflowId: body.editor.workflowId,
+                selectedNodeId: body.editor.selectedNodeId,
+                nodeCount: body.editor.nodeCount,
+              }
+            : null,
+        }),
+        pendingConfirmation
+          ? `The user approved a pending ${pendingConfirmation.toolName} action. A confirmation token is available in your tool context — call ${pendingConfirmation.toolName} immediately with the same payload (${JSON.stringify(pendingConfirmation.payload)}). Do not request a new confirmation. Never reuse old confirmation ids from chat history.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       messages: await convertToModelMessages(messages),
       tools,
-      stopWhen: stepCountIs(8),
+      stopWhen: stepCountIs(14),
       onFinish: async ({ text, usage }) => {
         const inputTokens = usage?.inputTokens ?? 0
         const outputTokens = usage?.outputTokens ?? 0
