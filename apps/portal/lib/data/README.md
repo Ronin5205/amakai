@@ -46,6 +46,8 @@ export default async function Page({ params }) {
 | `trigger-subscriptions.ts` | `syncTriggerSubscriptions`, webhook/email subscription lookup | Supabase | — |
 | `schedule-runs.ts` | `fireDueSchedules`, schedule subscription helpers | Supabase | — |
 | `inbound-runs.ts` | `enqueueAndProcessInboundRun`, `processQueuedExecution` | Supabase | — |
+| `ai-threads.ts` | `listAiThreads`, `getOrCreateAiThread`, `listAiMessages`, `appendAiMessage` | Supabase | `ai` |
+| `ai-usage.ts` | `getAiQuotaSnapshot`, `assertAiQuota`, `recordAiUsage` | Supabase | `ai` |
 
 Supporting logic (not accessors):
 
@@ -57,6 +59,7 @@ Supporting logic (not accessors):
 | `lib/operate/workflow-monitoring-profile.ts` | Adaptive monitoring sections from workflow graph + runs |
 | `lib/operate/execution-log-retention.ts` | `PRODUCTION_EXECUTION_RETENTION_LIMIT` (20 runs per workflow) |
 | `lib/engine/playground.ts` | In-process validation and production execution engine (scaffold) |
+| `lib/ai/` | Assistant models, RAG, tools, quota, graph validation, workspace sync |
 
 ## Supabase tables
 
@@ -74,6 +77,11 @@ Apply migrations in `supabase/migrations/` (oldest first):
 | `20260804210000_billing_stripe_customers.sql` | Drop local address columns; add Stripe ids |
 | `20260804220000_billing_security_hardening.sql` | Webhook idempotency; encrypted Stripe refs; read-only RLS |
 | `20260804230000_billing_cancel_at_period_end.sql` | Cancel-at-period-end + period end for subscription UI |
+| `20260807160000_ai_pgvector.sql` | `vector` extension (pgvector) |
+| `20260807160100_ai_knowledge_and_workspace.sql` | `ai_knowledge_chunks`, `ai_workspace_chunks`, cosine search RPCs |
+| `20260807160200_ai_threads_and_messages.sql` | `ai_threads`, `ai_messages` |
+| `20260807160300_ai_usage.sql` | Usage ledger, monthly rollup, increment RPC |
+| `20260807170000_ai_threads_auto_mode.sql` | Collapse thread `mode` to `auto` |
 
 ## Production execution flow
 

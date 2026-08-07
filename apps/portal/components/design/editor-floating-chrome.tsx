@@ -127,7 +127,7 @@ export function EditorFloatingChrome({
               <SparkleIcon data-icon="inline-start" />
               AI
             </TooltipTrigger>
-            <TooltipContent side="bottom">AI Builder</TooltipContent>
+            <TooltipContent side="bottom">Open Amakai Assistant</TooltipContent>
           </Tooltip>
 
           <Tooltip>

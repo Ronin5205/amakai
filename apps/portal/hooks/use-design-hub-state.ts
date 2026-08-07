@@ -11,8 +11,6 @@ import { buildConnectedNodePlacement } from "@/lib/design/connection-placement"
 import type { ConnectionDraft } from "@/lib/design/connection-draft"
 import {
   cloneWorkflowGraph,
-  generateAiWorkflowGraph,
-  layoutWorkflowGraph,
   offsetWorkflowGraphToAnchor,
   removeEdgesForNodes,
   sanitizeManualEdge,
@@ -419,21 +417,6 @@ export function useDesignHubState(initialWorkflow: Workflow) {
     [applyGraph]
   )
 
-  const generateFromAi = React.useCallback(
-    (request: string, anchor: { x: number; y: number }) => {
-      const graph = generateAiWorkflowGraph(request)
-      const positioned = offsetWorkflowGraphToAnchor(
-        layoutWorkflowGraph(graph),
-        anchor
-      )
-      applyGraph(
-        positioned,
-        request.trim().slice(0, 64) || "AI-generated workflow"
-      )
-    },
-    [applyGraph]
-  )
-
   const copySelectedNodes = React.useCallback(() => {
     const selected = workflow.nodes.filter((node) =>
       selectedNodeIds.includes(node.id)
@@ -548,7 +531,7 @@ export function useDesignHubState(initialWorkflow: Workflow) {
     removeSelectedEdge,
     deleteSelection,
     applyTemplate,
-    generateFromAi,
+    applyGraph,
     handleDragEnd,
     copySelectedNodes,
     pasteNodes,

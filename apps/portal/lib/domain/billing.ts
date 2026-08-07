@@ -28,6 +28,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
     features: [
       "Up to 10 workflows",
       "Up to 10 data tables",
+      "2,000 AI credits / month",
       "Secrets vault",
       "Production runs and logs",
     ],
@@ -39,10 +40,11 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
     description: "Higher limits and expanded capacity for growing teams.",
     priceLabel: "$5 per month",
     features: [
-      "Increased workflow limits",
-      "Increased table limits",
+      "Up to 50 workflows",
+      "Up to 50 data tables",
+      "10,000 AI credits / month",
       "Priority support",
-      "Additional capacity (details soon)",
+      "Expanded AI orchestration",
     ],
     available: true,
   },

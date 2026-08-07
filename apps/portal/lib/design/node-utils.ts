@@ -8,7 +8,6 @@ import {
   getNodeDefinition,
 } from "@/lib/design/node-definitions"
 import { getDefaultVariantConfig } from "@/lib/design/component-variant-definitions"
-import { generateAiWorkflowGraph } from "@/lib/design/workflow-graph"
 import type { NodeKind, WorkflowNode } from "@/lib/domain/workflow"
 
 export const NODE_PALETTE = COMPONENT_CATALOG
@@ -52,10 +51,6 @@ export function cloneTemplateNodes(nodes: WorkflowNode[]): WorkflowNode[] {
     metadata: node.metadata ? { ...node.metadata } : undefined,
     processing: node.processing ? { ...node.processing } : undefined,
   }))
-}
-
-export function generateWorkflowFromRequest(request: string): WorkflowNode[] {
-  return generateAiWorkflowGraph(request).nodes
 }
 
 export const PALETTE_DRAG_PREFIX = "palette:"

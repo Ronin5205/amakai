@@ -5,6 +5,7 @@ import { BillingView } from "@/components/billing/billing-view"
 import { SectionPage } from "@/components/section-page"
 import { reconcileCheckoutSessionAction } from "@/lib/actions/billing-actions"
 import { getBillingProfile } from "@/lib/data/billing"
+import { getAiQuotaSnapshot } from "@/lib/data/ai-usage"
 import { portalRoutes } from "@/lib/content"
 import {
   isProCheckoutEnabled,
@@ -49,6 +50,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   }
 
   const profile = await getBillingProfile()
+  const aiQuota = await getAiQuotaSnapshot().catch(() => null)
 
   if (!profile) {
     redirect(portalRoutes.signIn)
@@ -76,6 +78,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
         >
           <BillingView
             profile={profile}
+            aiQuota={aiQuota}
             stripeConfigured={isStripeConfigured()}
             proCheckoutEnabled={isProCheckoutEnabled()}
             notice={awaitingConfirmation ? null : notice}

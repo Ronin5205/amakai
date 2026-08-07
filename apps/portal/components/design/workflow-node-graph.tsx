@@ -700,7 +700,7 @@ export function WorkflowNodeGraph({
                       <EmptyTitle>Build your workflow</EmptyTitle>
                       <EmptyDescription>
                         Open resources from the toolbar to drag components or
-                        templates, or use AI Builder to generate a workflow.
+                        templates, or open the Assistant to generate a workflow.
                       </EmptyDescription>
                     </EmptyHeader>
                   </Empty>

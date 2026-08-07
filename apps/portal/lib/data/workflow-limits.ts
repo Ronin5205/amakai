@@ -1,6 +1,6 @@
 import { createClient } from "@/utils/supabase/server"
-
-export const MAX_WORKFLOWS_PER_USER = 10
+import { workflowLimitForPlan } from "@/lib/data/plan-limits"
+import type { PlanTier } from "@/lib/domain/billing"
 
 export type WorkflowLimitState = {
   count: number
@@ -10,16 +10,19 @@ export type WorkflowLimitState = {
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>
 
-export function buildWorkflowLimitState(count: number): WorkflowLimitState {
+export function buildWorkflowLimitState(
+  count: number,
+  limit: number
+): WorkflowLimitState {
   return {
     count,
-    limit: MAX_WORKFLOWS_PER_USER,
-    canCreate: count < MAX_WORKFLOWS_PER_USER,
+    limit,
+    canCreate: count < limit,
   }
 }
 
-export function workflowLimitReachedMessage(limit = MAX_WORKFLOWS_PER_USER) {
-  return `Workflow limit reached (${limit} workflows per account). Delete an existing workflow to create a new one.`
+export function workflowLimitReachedMessage(limit: number) {
+  return `Workflow limit reached (${limit} workflows per account). Delete an existing workflow or upgrade to Pro.`
 }
 
 export async function countUserWorkflows(
@@ -38,12 +41,25 @@ export async function countUserWorkflows(
   return count ?? 0
 }
 
+async function resolveCurrentPlan(): Promise<PlanTier> {
+  const { getUserPlan } = await import("@/lib/data/billing")
+  return getUserPlan()
+}
+
+export async function resolveWorkflowLimit(): Promise<number> {
+  const plan = await resolveCurrentPlan()
+  return workflowLimitForPlan(plan)
+}
+
 export async function assertWorkflowLimitNotReached(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
-  const count = await countUserWorkflows(supabase, userId)
-  const limitState = buildWorkflowLimitState(count)
+  const [count, limit] = await Promise.all([
+    countUserWorkflows(supabase, userId),
+    resolveWorkflowLimit(),
+  ])
+  const limitState = buildWorkflowLimitState(count, limit)
 
   if (!limitState.canCreate) {
     throw new Error(workflowLimitReachedMessage(limitState.limit))

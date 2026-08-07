@@ -1,6 +1,6 @@
 import { createClient } from "@/utils/supabase/server"
-
-export const MAX_DATA_TABLES_PER_USER = 10
+import { dataTableLimitForPlan } from "@/lib/data/plan-limits"
+import type { PlanTier } from "@/lib/domain/billing"
 
 export type DataTableLimitState = {
   count: number
@@ -10,18 +10,19 @@ export type DataTableLimitState = {
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>
 
-export function buildDataTableLimitState(count: number): DataTableLimitState {
+export function buildDataTableLimitState(
+  count: number,
+  limit: number
+): DataTableLimitState {
   return {
     count,
-    limit: MAX_DATA_TABLES_PER_USER,
-    canCreate: count < MAX_DATA_TABLES_PER_USER,
+    limit,
+    canCreate: count < limit,
   }
 }
 
-export function dataTableLimitReachedMessage(
-  limit = MAX_DATA_TABLES_PER_USER
-) {
-  return `Table limit reached (${limit} tables per account). Delete an existing table to create a new one.`
+export function dataTableLimitReachedMessage(limit: number) {
+  return `Table limit reached (${limit} tables per account). Delete an existing table or upgrade to Pro.`
 }
 
 export async function countUserDataTables(
@@ -40,12 +41,25 @@ export async function countUserDataTables(
   return count ?? 0
 }
 
+async function resolveCurrentPlan(): Promise<PlanTier> {
+  const { getUserPlan } = await import("@/lib/data/billing")
+  return getUserPlan()
+}
+
+export async function resolveDataTableLimit(): Promise<number> {
+  const plan = await resolveCurrentPlan()
+  return dataTableLimitForPlan(plan)
+}
+
 export async function assertDataTableLimitNotReached(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
-  const count = await countUserDataTables(supabase, userId)
-  const limitState = buildDataTableLimitState(count)
+  const [count, limit] = await Promise.all([
+    countUserDataTables(supabase, userId),
+    resolveDataTableLimit(),
+  ])
+  const limitState = buildDataTableLimitState(count, limit)
 
   if (!limitState.canCreate) {
     throw new Error(dataTableLimitReachedMessage(limitState.limit))

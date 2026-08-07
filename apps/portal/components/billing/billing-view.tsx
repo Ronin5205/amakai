@@ -16,6 +16,7 @@ import {
   type BillingProfile,
   type PlanTier,
 } from "@/lib/domain/billing"
+import type { AiQuotaSnapshot } from "@/lib/domain/ai"
 import { Badge } from "@amakai/shared/components/ui/badge"
 import { Button } from "@amakai/shared/components/ui/button"
 import {
@@ -29,6 +30,7 @@ import {
 
 export interface BillingViewProps {
   profile: BillingProfile
+  aiQuota?: AiQuotaSnapshot | null
   stripeConfigured: boolean
   proCheckoutEnabled: boolean
   notice?: "synced" | "pending" | "cancelled" | null
@@ -131,6 +133,7 @@ function noticeMessage(
 
 export function BillingView({
   profile: initialProfile,
+  aiQuota = null,
   stripeConfigured,
   proCheckoutEnabled,
   notice = null,
@@ -225,6 +228,39 @@ export function BillingView({
         <p className="rounded-none border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </p>
+      ) : null}
+
+      {aiQuota ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <SparkleIcon className="size-4" />
+              AI credits
+            </CardTitle>
+            <CardDescription>
+              Monthly Assistant allowance for {planDisplayName(aiQuota.plan)}.
+              Resets on {aiQuota.periodStart}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-end gap-6">
+            <div>
+              <p className="text-2xl font-medium tracking-tight">
+                {Math.floor(aiQuota.remainingCredits).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">credits remaining</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">
+                {Math.floor(aiQuota.usedCredits).toLocaleString()} /{" "}
+                {Math.floor(aiQuota.allowanceCredits).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">credits used</p>
+            </div>
+            {aiQuota.exhausted ? (
+              <Badge variant="destructive">Exhausted</Badge>
+            ) : null}
+          </CardContent>
+        </Card>
       ) : null}
 
       {banner ? (

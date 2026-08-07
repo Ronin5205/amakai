@@ -3,6 +3,7 @@ import {
   assertDataTableLimitNotReached,
   buildDataTableLimitState,
   countUserDataTables,
+  resolveDataTableLimit,
   type DataTableLimitState,
 } from "@/lib/data/table-limits"
 import {
@@ -20,6 +21,10 @@ import {
   parseResourceName,
 } from "@/lib/validation/resource-names"
 import { createClient } from "@/utils/supabase/server"
+import {
+  removeDataTableWorkspaceChunk,
+  syncDataTableWorkspaceChunk,
+} from "@/lib/ai/workspace-sync"
 
 async function getAuthenticatedUserId() {
   const supabase = await createClient()
@@ -152,8 +157,11 @@ export async function getDataTableLimitState(): Promise<DataTableLimitState | nu
     return null
   }
 
-  const count = await countUserDataTables(auth.supabase, auth.userId)
-  return buildDataTableLimitState(count)
+  const [count, limit] = await Promise.all([
+    countUserDataTables(auth.supabase, auth.userId),
+    resolveDataTableLimit(),
+  ])
+  return buildDataTableLimitState(count, limit)
 }
 
 export async function listDataTableSummaries() {
@@ -269,7 +277,12 @@ export async function createDataTable(
     throw new Error(error?.message ?? "Failed to create table.")
   }
 
-  return mapDataTableRow(data as DataTableRowDb, 0)
+  const created = mapDataTableRow(data as DataTableRowDb, 0)
+  void syncDataTableWorkspaceChunk({
+    userId: auth.userId,
+    table: created,
+  }).catch(() => {})
+  return created
 }
 
 export type SaveDataTableInput = {
@@ -321,7 +334,12 @@ export async function saveDataTable(input: SaveDataTableInput): Promise<DataTabl
   }
 
   const rowCount = await countRowsForTable(auth.supabase, auth.userId, input.id)
-  return mapDataTableRow(data as DataTableRowDb, rowCount)
+  const saved = mapDataTableRow(data as DataTableRowDb, rowCount)
+  void syncDataTableWorkspaceChunk({
+    userId: auth.userId,
+    table: saved,
+  }).catch(() => {})
+  return saved
 }
 
 export async function deleteDataTable(tableId: string): Promise<void> {
@@ -343,6 +361,11 @@ export async function deleteDataTable(tableId: string): Promise<void> {
   if (error) {
     throw new Error(error.message ?? "Failed to delete table.")
   }
+
+  void removeDataTableWorkspaceChunk({
+    userId: auth.userId,
+    tableId,
+  }).catch(() => {})
 }
 
 export async function duplicateDataTable(tableId: string): Promise<DataTable> {

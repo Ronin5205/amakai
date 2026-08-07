@@ -7,11 +7,6 @@ import { parseDesignPanelParam } from "@/lib/design/design-hub-types"
 import { listDataTableSummaries } from "@/lib/data/data-tables"
 import { listSecretSummaries } from "@/lib/data/secrets"
 import { getWorkflowDraft } from "@/lib/data/workflows"
-import {
-  getClarificationQuestions,
-  getPlanningStages,
-  getSampleAnalysis,
-} from "@/lib/data/planning"
 import { listTemplates } from "@/lib/data/templates"
 import { isPersistedWorkflowId } from "@/lib/data/workflow-mappers"
 
@@ -31,19 +26,8 @@ export default async function WorkflowEditorPage({
     redirect("/design/workflows")
   }
 
-  const [
-    workflow,
-    analysis,
-    planningStages,
-    questions,
-    templates,
-    dataTables,
-    secrets,
-  ] = await Promise.all([
+  const [workflow, templates, dataTables, secrets] = await Promise.all([
     getWorkflowDraft(params.id),
-    getSampleAnalysis(),
-    getPlanningStages(),
-    getClarificationQuestions(),
     listTemplates(),
     listDataTableSummaries(),
     listSecretSummaries(),
@@ -59,9 +43,6 @@ export default async function WorkflowEditorPage({
         key={workflow.id}
         initialPanel={initialPanel}
         workflow={workflow}
-        analysis={analysis}
-        planningStages={planningStages}
-        questions={questions}
         templates={templates}
         dataTables={dataTables}
         secrets={secrets}

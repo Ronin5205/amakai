@@ -4,6 +4,7 @@ import {
   assertWorkflowLimitNotReached,
   buildWorkflowLimitState,
   countUserWorkflows,
+  resolveWorkflowLimit,
   type WorkflowLimitState,
 } from "@/lib/data/workflow-limits"
 import {
@@ -21,6 +22,10 @@ import {
 import { parseResourceName } from "@/lib/validation/resource-names"
 import { validateWorkflowDraft } from "@/lib/validation/workflow-node-config"
 import { createClient } from "@/utils/supabase/server"
+import {
+  removeWorkflowWorkspaceChunk,
+  syncWorkflowWorkspaceChunk,
+} from "@/lib/ai/workspace-sync"
 
 async function getAuthenticatedUserId() {
   const supabase = await createClient()
@@ -61,8 +66,11 @@ export async function getWorkflowLimitState(): Promise<WorkflowLimitState | null
     return null
   }
 
-  const count = await countUserWorkflows(auth.supabase, auth.userId)
-  return buildWorkflowLimitState(count)
+  const [count, limit] = await Promise.all([
+    countUserWorkflows(auth.supabase, auth.userId),
+    resolveWorkflowLimit(),
+  ])
+  return buildWorkflowLimitState(count, limit)
 }
 
 export async function getWorkflowDraft(workflowId?: string): Promise<Workflow> {
@@ -137,7 +145,12 @@ export async function saveWorkflowDraft(workflow: Workflow): Promise<Workflow> {
       throw new Error(error?.message ?? "Failed to update workflow draft.")
     }
 
-    return mapWorkflowRow(data as WorkflowRow)
+    const saved = mapWorkflowRow(data as WorkflowRow)
+    void syncWorkflowWorkspaceChunk({
+      userId: auth.userId,
+      workflow: saved,
+    }).catch(() => {})
+    return saved
   }
 
   await assertUniqueWorkflowName(auth.supabase, auth.userId, payload.name)
@@ -156,7 +169,12 @@ export async function saveWorkflowDraft(workflow: Workflow): Promise<Workflow> {
     throw new Error(error?.message ?? "Failed to create workflow draft.")
   }
 
-  return mapWorkflowRow(data as WorkflowRow)
+  const saved = mapWorkflowRow(data as WorkflowRow)
+  void syncWorkflowWorkspaceChunk({
+    userId: auth.userId,
+    workflow: saved,
+  }).catch(() => {})
+  return saved
 }
 
 export async function createWorkflowDraft(name?: string): Promise<Workflow> {
@@ -215,6 +233,11 @@ export async function deleteWorkflow(workflowId: string): Promise<void> {
   if (error) {
     throw new Error(error.message ?? "Failed to delete workflow.")
   }
+
+  void removeWorkflowWorkspaceChunk({
+    userId: auth.userId,
+    workflowId,
+  }).catch(() => {})
 }
 
 export async function duplicateWorkflow(workflowId: string): Promise<Workflow> {

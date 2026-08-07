@@ -9,7 +9,7 @@ import {
   getNodeDimensions,
   layoutNodesHorizontally,
 } from "@/lib/design/layout-utils"
-import { createNodeFromKind, createNodeId } from "@/lib/design/node-utils"
+import { createNodeId } from "@/lib/design/node-utils"
 
 /**
  * Portable workflow graph for manual editing, templates, and AI generation.
@@ -43,7 +43,7 @@ export function createEdge(
   }
 }
 
-/** Connect each node to the next in array order (for AI/templates only). */
+/** Connect each node to the next in array order (for templates only). */
 export function buildSequentialEdges(nodes: WorkflowNode[]): WorkflowEdge[] {
   return nodes.slice(0, -1).map((node, index) =>
     createEdge(node.id, nodes[index + 1].id)
@@ -190,26 +190,6 @@ export function applyWorkflowGraph(
     nodes: laidOut.nodes,
     edges: laidOut.edges,
     updatedAt: new Date().toISOString(),
-  }
-}
-
-/** AI builder entry point — returns a fully connected graph. */
-export function generateAiWorkflowGraph(request: string): WorkflowGraphDraft {
-  const summary = request.trim().slice(0, 48) || "Automation"
-
-  const nodes = [
-    createNodeFromKind("trigger", "Start trigger"),
-    createNodeFromKind("sequential", "Analyze request", {
-      promptTemplate: request.trim(),
-    }),
-    createNodeFromKind("conditional", "Route by rules"),
-    createNodeFromKind("approval", "Human review"),
-    createNodeFromKind("sequential", `Complete: ${summary}`),
-  ]
-
-  return {
-    nodes,
-    edges: buildSequentialEdges(nodes),
   }
 }
 

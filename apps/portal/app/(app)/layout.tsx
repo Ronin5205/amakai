@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar"
+import { AssistantShell } from "@/components/ai/assistant-shell"
 import { PortalHeader } from "@/components/portal-header"
 import {
   SidebarInset,
@@ -19,16 +20,18 @@ export default function AppShellLayout({
           <AppSidebar />
         </Suspense>
         <SidebarInset className="min-w-0 overflow-hidden">
-          <PortalHeader />
-          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div
-              aria-hidden="true"
-              className="hairline-dots pointer-events-none absolute inset-0 opacity-40"
-            />
-            <div className="relative flex flex-1 flex-col p-4 md:p-6 lg:p-8">
-              {children}
+          <AssistantShell>
+            <PortalHeader />
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div
+                aria-hidden="true"
+                className="hairline-dots pointer-events-none absolute inset-0 opacity-40"
+              />
+              <div className="relative flex flex-1 flex-col p-4 md:p-6 lg:p-8">
+                {children}
+              </div>
             </div>
-          </div>
+          </AssistantShell>
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

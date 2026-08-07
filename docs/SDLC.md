@@ -874,6 +874,7 @@ This appendix tracks what the **client portal** (`apps/portal`) implements today
 | Resources, billing, community | Community stub; Stripe Checkout + Customer Portal (single gateway, webhook entitlements) |
 | Multi-tenant organizations | Not implemented — rows scoped by `user_id` |
 | Distributed workflow engine | Not implemented — SDLC §7–10 services are future work |
-| AI planning pipeline | Stub accessors only (`lib/data/planning.ts`) |
+| AI assistant (portal) | Implemented — Gemini chat, RAG, tools, thread history, credit quotas (`lib/ai/`, `components/ai/`) |
+| AI planning pipeline (legacy stubs) | Deprecated — use assistant; `lib/data/planning.ts` remains empty |
 
 **Documentation:** [Portal_Guide.md](./Portal_Guide.md) · [Workflow_Nodes_Reference.md](./Workflow_Nodes_Reference.md) · [apps/portal/lib/data/README.md](../apps/portal/lib/data/README.md)

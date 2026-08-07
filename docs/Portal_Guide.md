@@ -177,6 +177,46 @@ Production run logs map to three levels:
 
 Playground-only levels (`info`, `success`, `warning`) are mapped into these three when persisted to production history.
 
+## Amakai Assistant (AI)
+
+Global assistant in a **right-side panel** (sparkle icon in the header). One model handles questions, step-by-step guidance, and build/deploy actions — intent is inferred from each message (no Ask/Guide/Build toggle).
+
+| Surface | Behavior |
+|---------|----------|
+| **Header trigger** | Opens/closes the assistant sheet (`showOverlay={false}` so the app stays usable) |
+| **Design editor** | Toolbar **AI** button or `?panel=ai` deep link opens the same panel |
+| **Chat history** | Clock icon lists past threads; **+** starts a new chat |
+| **Credits** | Shown in panel header and on **Administration → Billing** (1 credit = 1,000 billable tokens; output tokens count 4×) |
+
+### Capabilities
+
+- **RAG** over product docs, component catalog, and node definitions (`pgvector` + `search_product_knowledge`)
+- **Workspace context** — indexed workflow/table drafts per user (`ai_workspace_chunks`)
+- **Read tools** — list workflows, tables, secrets (names only), component catalog
+- **Planning** — clarifying questions and build plans (user approval before writes)
+- **Writes** — create/update workflows and tables; live canvas patches when the editor is open
+- **Destructive** — deploy, delete, etc. require explicit confirmation in chat
+
+### Setup
+
+1. Set `GOOGLE_GENERATIVE_AI_API_KEY` in `apps/portal/.env.local` (see `.env.example`).
+2. Apply AI migrations (`20260807160000`–`20260807170000` in `supabase/migrations/`).
+3. Index knowledge (throttled for Gemini free-tier embed limits):
+
+```bash
+npm run ai:index --workspace=@amakai/portal
+```
+
+4. Re-run indexing after doc or catalog changes (content-hash dedupe skips unchanged chunks).
+
+### API
+
+| Route | Role |
+|-------|------|
+| `POST /api/ai/chat` | Streaming chat; persists threads/messages; returns `x-ai-thread-id` |
+
+Server actions: `getAiQuotaAction`, `listAiThreadsAction`, `getAiThreadMessagesAction`.
+
 ## Execution engine (current)
 
 Production and testing share `lib/engine/playground.ts`:
@@ -203,15 +243,17 @@ Production and testing share `lib/engine/playground.ts`:
 | Templates catalog | `lib/data/templates.ts` |
 | Input validation (Zod) | `lib/validation/` |
 | Billing / plans | `lib/stripe/gateway.ts` (sole Stripe SDK entry), `lib/data/billing.ts`, `components/billing/`, `app/api/stripe/webhook` |
+| AI assistant | `components/ai/`, `lib/ai/`, `app/api/ai/chat/route.ts`, `scripts/build-knowledge-index.ts` |
 | Editor | `components/design/design-hub-view.tsx` |
 | Views | `components/views/*` |
 
 ## Local setup
 
-1. Copy `apps/portal/.env.example` → `apps/portal/.env.local` (Supabase keys; optional Stripe keys for billing).
+1. Copy `apps/portal/.env.example` → `apps/portal/.env.local` (Supabase keys; optional Stripe and `GOOGLE_GENERATIVE_AI_API_KEY` for the assistant).
 2. Apply Supabase migrations (see [data layer README](../apps/portal/lib/data/README.md)).
 3. `npm run dev:portal` → [http://localhost:3001](http://localhost:3001)
-4. Optional Stripe:
+4. Optional AI: set `GOOGLE_GENERATIVE_AI_API_KEY`, apply AI migrations, then `npm run ai:index --workspace=@amakai/portal`.
+5. Optional Stripe:
    - Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `SECRETS_ENCRYPTION_KEY` (encrypts Stripe IDs at rest).
    - Enable **Customer Portal** in the Stripe Dashboard.
    - Forward webhooks: `stripe listen --forward-to localhost:3001/api/stripe/webhook` (signature verification is required even in local/dev — never bypass it).

@@ -15,7 +15,6 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 
-import { AiBuilderPanel } from "@/components/design/ai-builder-panel"
 import { DeleteWorkflowDialog } from "@/components/design/delete-workflow-dialog"
 import { DeployWorkflowSheet } from "@/components/design/deploy-workflow-sheet"
 import {
@@ -29,6 +28,8 @@ import type {
   InspectorAnchorScreen,
   WorkflowGraphControls,
 } from "@/components/design/workflow-node-graph"
+import { useAssistant } from "@/components/ai/assistant-provider"
+import { useRegisterWorkflowEditor } from "@/components/ai/workflow-editor-context"
 import type { ConnectionDraft, PendingConnectionPlacement } from "@/lib/design/connection-draft"
 import { useDesignHubState } from "@/hooks/use-design-hub-state"
 import { useWorkflowValidation } from "@/hooks/use-workflow-validation"
@@ -55,11 +56,6 @@ import {
   resolveCatalogItemFromDragId,
 } from "@/lib/design/node-utils"
 import { getComponentCatalogItemById } from "@/lib/design/component-catalog"
-import type {
-  ClarificationQuestion,
-  PlanningStage,
-  RequirementAnalysis,
-} from "@/lib/domain/planning"
 import type { WorkflowTemplate } from "@/lib/domain/template"
 import type { Workflow } from "@/lib/domain/workflow"
 import type { DataTableSummary } from "@/lib/domain/data-table"
@@ -84,20 +80,10 @@ const designHubCollisionDetection: CollisionDetection = (args) => {
 
   return closestCenter(args)
 }
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@amakai/shared/components/ui/sheet"
 
 export interface DesignHubViewProps {
   initialPanel?: DesignPanelParam
   workflow: Workflow
-  analysis: RequirementAnalysis
-  planningStages: PlanningStage[]
-  questions: ClarificationQuestion[]
   templates: WorkflowTemplate[]
   dataTables?: DataTableSummary[]
   secrets?: SecretSummary[]
@@ -106,9 +92,6 @@ export interface DesignHubViewProps {
 export function DesignHubView({
   initialPanel = "components",
   workflow: initialWorkflow,
-  analysis,
-  planningStages,
-  questions,
   templates,
   dataTables = [],
   secrets = [],
@@ -116,6 +99,7 @@ export function DesignHubView({
   const router = useRouter()
   const searchParams = useSearchParams()
   const panelParam = searchParams.get("panel")
+  const { setOpen: setAssistantOpen } = useAssistant()
 
   const [resourcesOpen, setResourcesOpen] = React.useState(false)
   const [resourcesTab, setResourcesTab] = React.useState<ResourcesPanelTab>(
@@ -124,9 +108,6 @@ export function DesignHubView({
   const [inspectorOpen, setInspectorOpen] = React.useState(false)
   const [inspectorAnchorScreen, setInspectorAnchorScreen] =
     React.useState<InspectorAnchorScreen | null>(null)
-  const [aiOpen, setAiOpen] = React.useState(
-    initialPanel === "ai" || panelParam === "ai"
-  )
   const [activeDragLabel, setActiveDragLabel] = React.useState<string | null>(
     null
   )
@@ -203,7 +184,7 @@ export function DesignHubView({
     removeSelectedNodes,
     deleteSelection,
     applyTemplate,
-    generateFromAi,
+    applyGraph,
     handleDragEnd,
     copySelectedNodes,
     pasteNodes,
@@ -215,6 +196,19 @@ export function DesignHubView({
     redo,
     syncSavedWorkflow,
   } = useDesignHubState(initialWorkflow)
+
+  const applyGraphToCanvas = React.useCallback(
+    (graph: { nodes: typeof workflow.nodes; edges: NonNullable<typeof workflow.edges> }) => {
+      applyGraph(graph)
+    },
+    [applyGraph]
+  )
+
+  useRegisterWorkflowEditor({
+    workflow,
+    selectedNodeId: selectedNode?.id ?? null,
+    applyGraph: applyGraphToCanvas,
+  })
 
   const handleWorkflowSaved = React.useCallback(
     (saved: Workflow) => {
@@ -276,7 +270,7 @@ export function DesignHubView({
 
   React.useEffect(() => {
     if (panelParam === "ai") {
-      setAiOpen(true)
+      setAssistantOpen(true)
       return
     }
 
@@ -284,7 +278,7 @@ export function DesignHubView({
       setResourcesTab(resourcesTabFromParam(panelParam))
       setResourcesOpen(true)
     }
-  }, [panelParam])
+  }, [panelParam, setAssistantOpen])
 
   const syncPanelParam = React.useCallback(
     (panel: DesignPanelParam | null) => {
@@ -352,9 +346,8 @@ export function DesignHubView({
     syncPanelParam(resourcesTab)
   }
 
-  const handleAiOpenChange = (open: boolean) => {
-    setAiOpen(open)
-    syncPanelParam(open ? "ai" : null)
+  const handleOpenAssistant = () => {
+    setAssistantOpen(true)
   }
 
   const handleWorkflowNameChange = React.useCallback(
@@ -401,14 +394,6 @@ export function DesignHubView({
       applyTemplate(template, getViewportAnchor())
     },
     [applyTemplate, getViewportAnchor]
-  )
-
-  const handleGenerateFromAi = React.useCallback(
-    (request: string) => {
-      generateFromAi(request, getViewportAnchor())
-      handleAiOpenChange(false)
-    },
-    [generateFromAi, getViewportAnchor, handleAiOpenChange]
   )
 
   const onDragStart = (event: DragStartEvent) => {
@@ -596,7 +581,7 @@ export function DesignHubView({
           isValidating={isValidating}
           onNameChange={handleWorkflowNameChange}
           onOpenResources={handleOpenResources}
-          onOpenAi={() => handleAiOpenChange(true)}
+          onOpenAi={handleOpenAssistant}
           onDelete={handleRequestDelete}
           onValidate={runValidation}
           onDeploy={handleDeployOpen}
@@ -673,25 +658,6 @@ export function DesignHubView({
         onRunValidation={runValidation}
         onSubmitApproval={submitValidationApproval}
       />
-
-      <Sheet open={aiOpen} onOpenChange={handleAiOpenChange}>
-        <SheetContent side="right" className="w-full sm:max-w-xl">
-          <SheetHeader className="border-b pb-4">
-            <SheetTitle>AI Builder</SheetTitle>
-            <SheetDescription>
-              Describe your automation and generate a workflow on the canvas.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <AiBuilderPanel
-              analysis={analysis}
-              stages={planningStages}
-              questions={questions}
-              onGenerate={handleGenerateFromAi}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
 
       <DragOverlay dropAnimation={null}>
         {activeDragLabel ? (
