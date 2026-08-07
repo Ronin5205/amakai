@@ -3,8 +3,10 @@ import {
   getEditFieldCount,
   normalizeFieldEditRows,
 } from "@/lib/design/edit-fields"
-import { parseOutputFieldDefs } from "@/lib/design/output-fields"
-import { isUnifiedTriggerCatalogId } from "@/lib/design/trigger-config"
+import {
+  isUnifiedTriggerCatalogId,
+  resolveTriggerOutputFields,
+} from "@/lib/design/trigger-config"
 import type { WorkflowEdge, WorkflowNode } from "@/lib/domain/workflow"
 
 export type UpstreamFieldOption = {
@@ -99,12 +101,7 @@ export function resolveNodeOutputFields(
   )
 
   if (isUnifiedTriggerCatalogId(catalogItemId)) {
-    const declared = parseOutputFieldDefs(node.config)
-    if (declared.length > 0) {
-      return declared.map((field) => field.name)
-    }
-    const legacy = asStringArray(node.config.outputFields)
-    return legacy.length > 0 ? legacy : ["payload"]
+    return resolveTriggerOutputFields(node).map((field) => field.name)
   }
 
   if (catalogItemId === "loop.over-items") {

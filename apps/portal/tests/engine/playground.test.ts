@@ -88,6 +88,73 @@ describe("runPlaygroundValidation", () => {
     ).toBe(true)
   })
 
+  it("passes the full Gmail → edit-fields payload to a data-table write", async () => {
+    mockedWrite.mockResolvedValue({
+      row: {
+        id: "row-1",
+        tableId: "table-1",
+        data: {
+          from: "sender@example.com",
+          subject: "Sample inbound email",
+        },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      tableName: "Inbox Messages",
+    })
+
+    const trigger = workflowNode({
+      id: "trigger-1",
+      kind: "trigger",
+      label: "Gmail inbox",
+      config: {
+        catalogItemId: "trigger.workflow",
+        triggerMode: "integration",
+        service: "email",
+        provider: "gmail",
+        operation: "receive",
+        authMode: "secret",
+        secretName: "My Gmail",
+      },
+    })
+    const edit = workflowNode({
+      id: "edit-1",
+      kind: "sequential",
+      label: "Map email fields",
+      config: {
+        catalogItemId: "action.edit-fields",
+        fieldCount: 2,
+        fieldEdits: [
+          { name: "from", sourceField: "trigger-1.from" },
+          { name: "subject", sourceField: "trigger-1.subject" },
+        ],
+      },
+    })
+    const write = dataTableNode("table-1", {
+      operation: "write",
+      tableName: "Inbox Messages",
+      columnMappings: [
+        { columnKey: "from", sourceField: "edit-1.from" },
+        { columnKey: "subject", sourceField: "edit-1.subject" },
+      ],
+    })
+
+    const result = await runPlaygroundValidation(
+      [trigger, edit, write],
+      [sequentialEdge(trigger, edit), sequentialEdge(edit, write)]
+    )
+
+    expect(result.passed).toBe(true)
+    expect(mockedWrite).toHaveBeenCalledWith(
+      "Inbox Messages",
+      expect.objectContaining({
+        from: "sender@example.com",
+        subject: "Sample inbound email",
+      }),
+      expect.any(Object)
+    )
+  })
+
   it("fails data-table write when mapped values are empty", async () => {
     const trigger = triggerNode("trigger-1", ["status"])
     const write = dataTableNode("write-1", {

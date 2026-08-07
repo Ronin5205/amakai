@@ -1,5 +1,4 @@
 import { cloneJsonValue, ensureJsonObject } from "@/lib/design/json-value"
-import { parseOutputFieldDefs } from "@/lib/design/output-fields"
 import {
   appendApprovalMetadata,
   describeApprovalTarget,
@@ -28,6 +27,7 @@ import {
   isIntegrationTrigger,
   isUnifiedTriggerCatalogId,
   normalizeTriggerMode,
+  resolveTriggerOutputFields,
 } from "@/lib/design/trigger-config"
 import {
   buildOutgoingEdgeMap,
@@ -56,7 +56,6 @@ import {
 } from "@/lib/actions/playground-data-table-actions"
 import {
   applyFieldEditsToPayload,
-  applySingleFieldEdit,
   applyRenamesToPayload,
   buildDataTableRowFromPayload,
   buildTriggerPlaygroundPayload,
@@ -595,7 +594,7 @@ async function processNodeInPlayground(
       }
 
       const triggerType = normalizeTriggerMode(node)
-      const outputFields = parseOutputFieldDefs(node.config)
+      const outputFields = resolveTriggerOutputFields(node)
       if (
         isUnifiedTriggerCatalogId(catalogItemId) &&
         outputFields.length === 0
@@ -754,15 +753,13 @@ async function processNodeInPlayground(
           const editedPayload = applyFieldEditsToPayload(payload, node)
           const names = validation.rows.map((row) => row.name.trim()).join(", ")
 
-          return {
-            ok: true,
-            payload: editedPayload,
-            message: `Applied ${validation.fieldCount} field mapping(s): ${names}`,
-            fanOutOutputs: validation.rows.map((row, index) => ({
-              portId: `output-${index + 1}`,
-              payload: applySingleFieldEdit(payload, row),
-            })),
-          }
+          // Single sequential output with the full mapped payload so
+          // downstream nodes (data-table, etc.) see every field.
+          return passThrough(
+            node,
+            editedPayload,
+            `Applied ${validation.fieldCount} field mapping(s): ${names}`
+          )
         }
         if (catalogItemId === "action.rename-keys") {
           const renames = asRenameRows(node.config.renames)

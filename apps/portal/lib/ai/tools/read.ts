@@ -191,7 +191,7 @@ export function createReadTools(ctx: AiToolContext) {
             })),
           })),
           triggerWiring:
-            "Inbound email (Gmail/Outlook) uses trigger.workflow with triggerMode=integration, not integrations.external-tool.",
+            "Inbound email uses trigger.workflow recipes gmail.receive / outlook.receive (triggerMode=integration). Outbound send uses integrations.external-tool.",
         }
       },
     }),

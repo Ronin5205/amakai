@@ -2,7 +2,7 @@ import { buildEditFieldPorts, normalizeFieldEditRows } from "@/lib/design/edit-f
 import { workflowNode } from "../fixtures/workflow-fixtures"
 
 describe("edit-fields", () => {
-  it("builds paired input and output ports for each mapping row", () => {
+  it("uses a single sequential main-in / main-out port pair", () => {
     const node = workflowNode({
       id: "edit-1",
       kind: "sequential",
@@ -19,12 +19,9 @@ describe("edit-fields", () => {
 
     const { inputs, outputs } = buildEditFieldPorts(node)
 
-    expect(inputs.map((port) => port.id)).toEqual(["input-1", "input-2"])
-    expect(outputs.map((port) => port.id)).toEqual(["output-1", "output-2"])
+    expect(inputs.map((port) => port.id)).toEqual(["main-in"])
+    expect(outputs.map((port) => port.id)).toEqual(["main-out"])
     expect(inputs[0]?.required).toBe(true)
-    expect(inputs[1]?.required).toBe(false)
-    expect(outputs[0]?.label).toBe("total")
-    expect(outputs[1]?.label).toBe("currency")
   })
 
   it("pads and trims mapping rows to the configured count", () => {

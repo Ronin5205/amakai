@@ -7,7 +7,7 @@ import {
   resolveOutputPortId,
 } from "@/lib/design/node-layout"
 import {
-  applyTriggerModeDefaults,
+  canonicalizeTriggerConfig,
   isIntegrationTrigger,
   isUnifiedTriggerCatalogId,
   normalizeTriggerMode,
@@ -48,10 +48,13 @@ function mergeCatalogDefaults(node: WorkflowNode): WorkflowNode {
 
   const config = { ...defaults, ...node.config }
   if (catalogItemId && isUnifiedTriggerCatalogId(catalogItemId)) {
-    const mode = normalizeTriggerMode({ ...node, config } as WorkflowNode)
-    if (mode === "integration") {
-      Object.assign(config, applyTriggerModeDefaults("integration", config))
-    }
+    Object.assign(
+      config,
+      canonicalizeTriggerConfig(config, {
+        label: node.label,
+        catalogItemId,
+      })
+    )
   }
 
   return { ...node, config }
@@ -211,21 +214,10 @@ export function validateAiBuildCompleteness(
       const mode = normalizeTriggerMode(node as WorkflowNode)
       if (
         mode === "integration" &&
-        String(node.config.service) === "email" &&
-        String(node.config.operation) === "receive" &&
-        /\b(gmail|outlook|email|inbox)\b/i.test(label) &&
         !String(node.config.secretName ?? "").trim()
       ) {
         issues.push(
           `${label}: email receive trigger requires config.secretName (oauth secret).`
-        )
-      }
-      if (
-        /\b(gmail|outlook|inbox|email)\b/i.test(label) &&
-        mode === "manual"
-      ) {
-        issues.push(
-          `${label}: looks like an email inbox trigger but triggerMode is manual — use triggerMode integration with Gmail/Outlook receive.`
         )
       }
     }

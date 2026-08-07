@@ -202,6 +202,9 @@ describe("graph validation repair loop", () => {
     expect(normalized.nodes[0].config.service).toBe("email")
     expect(normalized.nodes[0].config.provider).toBe("gmail")
     expect(normalized.nodes[0].config.operation).toBe("receive")
+    expect(normalized.nodes[0].config.outputFields).toEqual(
+      expect.arrayContaining(["from", "subject", "body", "receivedAt"])
+    )
   })
 
   it("requires secrets on integration email triggers", () => {
@@ -313,8 +316,12 @@ describe("graph validation repair loop", () => {
     )
     expect(enriched.nodes[0].position).toBeDefined()
     expect(enriched.edges[0].sourcePort).toBe("main-out")
-    expect(enriched.edges[0].targetPort).toBe("input-1")
+    expect(enriched.edges[0].targetPort).toBe("main-in")
     expect(enriched.edges[1].targetPort).toBe("main-in")
+    expect(enriched.nodes[0].config.triggerMode).toBe("integration")
+    expect(enriched.nodes[0].config.outputFields).toEqual(
+      expect.arrayContaining(["from", "subject", "body"])
+    )
   })
 
   it("repairs invalid graphs within the retry budget", async () => {

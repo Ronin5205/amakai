@@ -32,58 +32,60 @@ export function normalizeFieldEditRows(
   })
 }
 
-function inputPort(
-  id: string,
-  label: string,
-  description: string,
-  required = false
-): NodePort {
-  return { id, label, type: "main", required, description }
+/**
+ * Edit Fields is a sequential shaper: one payload in, one payload out.
+ * Field mappings live in config (fieldEdits), not as per-row ports —
+ * per-row ports previously broke Gmail → edit → table chains by fan-out
+ * of partial payloads.
+ */
+export function buildEditFieldPorts(_node: WorkflowNode): {
+  inputs: NodePort[]
+  outputs: NodePort[]
+} {
+  return {
+    inputs: [
+      {
+        id: "main-in",
+        label: "Input",
+        type: "main",
+        required: true,
+        description: "Incoming payload. Map fields via config.fieldEdits.",
+      },
+    ],
+    outputs: [
+      {
+        id: "main-out",
+        label: "Output",
+        type: "main",
+        description: "Payload with all mapped fields applied.",
+      },
+    ],
+  }
 }
 
-function outputPort(id: string, label: string, description: string): NodePort {
-  return { id, label, type: "main", description }
-}
-
-export function buildEditFieldPorts(node: WorkflowNode) {
-  const fieldCount = getEditFieldCount(node.config)
-  const rows = normalizeFieldEditRows(node.config.fieldEdits, fieldCount)
-
-  const inputs = rows.map((row, index) => {
-    const slot = index + 1
-    const outputName = row.name.trim()
-
-    return inputPort(
-      `input-${slot}`,
-      outputName ? `${outputName} (source)` : `Input ${slot}`,
-      row.sourceField.trim()
-        ? `Reads "${row.sourceField}" from the incoming payload.`
-        : `Source mapping for output ${slot}.`,
-      index === 0
-    )
-  })
-
-  const outputs = rows.map((row, index) => {
-    const slot = index + 1
-    const outputName = row.name.trim()
-
-    return outputPort(
-      `output-${slot}`,
-      outputName || `Output ${slot}`,
-      outputName
-        ? `Emits the edited "${outputName}" value.`
-        : `Edited output ${slot}.`
-    )
-  })
-
-  return { inputs, outputs }
-}
-
+/** @deprecated Prefer main-out; kept for legacy edge remapping. */
 export function getEditFieldOutputPortId(
-  node: WorkflowNode,
-  index: number
+  _node: WorkflowNode,
+  _index: number
 ) {
-  return `output-${index + 1}`
+  return "main-out"
+}
+
+/** Remap legacy per-row ports (input-1 / output-2) onto the single sequential ports. */
+export function normalizeEditFieldsPortId(
+  side: "input" | "output",
+  portId?: string
+): string {
+  if (!portId || portId === "main-in" || portId === "main-out") {
+    return side === "input" ? "main-in" : "main-out"
+  }
+  if (/^input-\d+$/i.test(portId)) {
+    return "main-in"
+  }
+  if (/^output-\d+$/i.test(portId)) {
+    return "main-out"
+  }
+  return portId
 }
 
 export function validateFieldEditRows(node: WorkflowNode) {

@@ -100,7 +100,7 @@ export function buildCatalogKnowledgeChunks(): KnowledgeChunkDraft[] {
               `Provider ${provider.id}: operation ${operation.id} (${operation.nodeKind}) — ${operation.description}`
           )
         ),
-        "Inbound Gmail/Outlook email uses trigger.workflow triggerMode=integration, not integrations.external-tool.",
+        "Inbound Gmail/Outlook email uses trigger.workflow recipe gmail.receive / outlook.receive (triggerMode=integration), not integrations.external-tool.",
       ].join("\n"),
     })
   }

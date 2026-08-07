@@ -590,6 +590,8 @@ export function NodeConfigFields({
           onChange("provider", defaults.provider)
           onChange("operation", defaults.operation)
           onChange("authMode", defaults.authMode)
+        }
+        if (defaults.outputFieldDefs !== undefined) {
           onChange("outputFieldDefs", defaults.outputFieldDefs)
           onChange("outputFields", defaults.outputFields)
           onChange("outputFieldTypes", defaults.outputFieldTypes)

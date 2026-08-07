@@ -6,7 +6,7 @@ import type {
 import { buildDefaultSwitchCases } from "@/lib/design/upstream-fields"
 import { COMPARISON_OPERATORS } from "@/lib/design/comparison-rules"
 import {
-  defaultOutputFieldsForTriggerMode,
+  canonicalizeTriggerConfig,
   TRIGGER_MODE_OPTIONS,
   UNIFIED_TRIGGER_CATALOG_ID,
   isUnifiedTriggerCatalogId,
@@ -400,14 +400,14 @@ export const COMPONENT_VARIANT_SPECS: Record<string, ComponentVariantSpec> = {
         type: "number",
         defaultValue: 1,
         description:
-          "Number of input/output pairs. Each pair maps one upstream value to one output field.",
+          "Number of field mappings. Each row copies one upstream value into a named output field on the same payload.",
       },
       {
         key: "fieldEdits",
         label: "Mappings",
         type: "field-edit-table",
         description:
-          "For each row: pick a source field (input) and name the edited output field.",
+          "For each row: pick a source field and name the output field. One payload in, one payload out.",
       },
     ],
     resolvePorts: (node) => buildEditFieldPorts(node),
@@ -797,32 +797,11 @@ export function getDefaultVariantConfig(catalogItemId: string) {
   }
 
   if (isUnifiedTriggerCatalogId(catalogItemId)) {
-    const mode =
-      catalogItemId === "trigger.external-tool"
-        ? ("integration" as const)
-        : catalogItemId === "trigger.api"
-          ? ("webhook" as const)
-          : ("manual" as const)
-    config.triggerMode = mode
-    if (mode !== "integration") {
-      config.triggerType = mode
-    }
-    const defs = defaultOutputFieldsForTriggerMode(mode)
-    config.outputFieldDefs = defs
-    config.outputFields = defs.map((field) => field.name)
-    config.outputFieldTypes = Object.fromEntries(
-      defs.map((field) => [field.name, field.type])
-    )
-    if (mode === "integration") {
-      config.service = "email"
-      config.provider = "gmail"
-      config.operation = "receive"
-      config.authMode = "secret"
-    }
-    if (mode === "webhook") {
-      config.authMode = config.authMode ?? "none"
-      config.webhookToken = crypto.randomUUID()
-    }
+    const canonical = canonicalizeTriggerConfig(config, {
+      label: "",
+      catalogItemId,
+    })
+    Object.assign(config, canonical)
   }
 
   return config

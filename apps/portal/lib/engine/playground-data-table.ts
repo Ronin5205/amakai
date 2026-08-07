@@ -10,10 +10,12 @@ import {
   type ComparisonOperator,
 } from "@/lib/design/comparison-rules"
 import {
-  parseOutputFieldDefs,
   type OutputFieldType,
 } from "@/lib/design/output-fields"
-import { normalizeTriggerMode } from "@/lib/design/trigger-config"
+import {
+  normalizeTriggerMode,
+  resolveTriggerOutputFields,
+} from "@/lib/design/trigger-config"
 import {
   asEditRows,
   asRenameRows,
@@ -116,12 +118,14 @@ export function buildTriggerPayloadFromValues(
   values: Record<string, unknown> = {},
   options?: { fillMissingWithSamples?: boolean }
 ) {
-  const fieldDefs = parseOutputFieldDefs(node.config)
+  const fieldDefs = resolveTriggerOutputFields(node)
   const outputFields =
-    fieldDefs.length > 0 ? fieldDefs : asStringArray(node.config.outputFields).map((name) => ({
-      name,
-      type: "string" as const,
-    }))
+    fieldDefs.length > 0
+      ? fieldDefs
+      : asStringArray(node.config.outputFields).map((name) => ({
+          name,
+          type: "string" as const,
+        }))
 
   const fieldValues = Object.fromEntries(
     outputFields.map((field, index) => {

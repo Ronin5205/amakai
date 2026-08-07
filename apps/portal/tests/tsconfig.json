@@ -3,10 +3,7 @@
   "compilerOptions": {
     "baseUrl": "..",
     "types": ["jest", "node"],
-    "module": "commonjs",
-    "moduleResolution": "node",
     "noEmit": true,
-    "isolatedModules": false,
     "paths": {
       "@/*": ["./*"],
       "@amakai/shared/*": ["../../packages/shared/src/*"]

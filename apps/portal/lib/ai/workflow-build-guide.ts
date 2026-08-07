@@ -1,4 +1,14 @@
-import { EMAIL_RECEIVE_OUTPUT_FIELDS } from "@/lib/integrations/registry/email-operations"
+import {
+  EMAIL_RECEIVE_OUTPUT_FIELDS,
+} from "@/lib/integrations/registry/email-operations"
+import {
+  getTriggerBuildKnowledge,
+  getTriggerRecipe,
+  UNIFIED_TRIGGER_CATALOG_ID,
+} from "@/lib/design/trigger-config"
+
+const triggerKnowledge = getTriggerBuildKnowledge()
+const gmailRecipe = getTriggerRecipe("gmail.receive")
 
 /** Graph shape the assistant must produce for apply_workflow_graph. */
 export const WORKFLOW_GRAPH_SCHEMA = `
@@ -18,9 +28,9 @@ Every node needs:
   - config.catalogItemId: from list_component_catalog only
 
 Edges connect node ids. Standard ports:
-  - Most nodes: sourcePort "main-out" → targetPort "main-in"
-  - Edit Fields: use main-out/main-in for the first mapping pair
+  - Most nodes (including Edit Fields): sourcePort "main-out" → targetPort "main-in"
   - Triggers have no inputs; only main-out
+  - Ports may be omitted; enrichment fills main-out → main-in
 
 Upstream field references use "nodeId.fieldName" (e.g. trigger-1.subject).
 `.trim()
@@ -46,6 +56,18 @@ Build orchestration (you have full read/write access to workflows and tables):
 If apply_workflow_graph fails, read issues[], fix the graph, and retry.
 `.trim()
 
+export const TRIGGER_BUILD_GUIDE = `
+Trigger recipes (catalogItemId=${UNIFIED_TRIGGER_CATALOG_ID}, kind=trigger):
+${triggerKnowledge.recipes
+  .map(
+    (recipe) =>
+      `- ${recipe.id}: ${recipe.aiHint} Outputs: ${recipe.outputFields.join(", ")}.`
+  )
+  .join("\n")}
+
+${triggerKnowledge.rules.map((rule) => `- ${rule}`).join("\n")}
+`.trim()
+
 /** Canonical example: Gmail inbox → shape fields → persist to data table. */
 export const GMAIL_INBOX_TO_TABLE_EXAMPLE = {
   description:
@@ -56,13 +78,14 @@ export const GMAIL_INBOX_TO_TABLE_EXAMPLE = {
       label: "Gmail inbox",
       kind: "trigger",
       config: {
-        catalogItemId: "trigger.workflow",
-        triggerMode: "integration",
-        service: "email",
-        provider: "gmail",
-        operation: "receive",
-        authMode: "secret",
+        catalogItemId: UNIFIED_TRIGGER_CATALOG_ID,
+        ...gmailRecipe.config,
         secretName: "My Gmail",
+        outputFieldDefs: gmailRecipe.outputFields,
+        outputFields: gmailRecipe.outputFields.map((field) => field.name),
+        outputFieldTypes: Object.fromEntries(
+          gmailRecipe.outputFields.map((field) => [field.name, field.type])
+        ),
       },
     },
     {
@@ -127,6 +150,8 @@ export function getWorkflowBuildGuide() {
     graphSchema: WORKFLOW_GRAPH_SCHEMA,
     dataTableGuide: DATA_TABLE_GUIDE,
     orchestration: BUILD_ORCHESTRATION,
+    triggerGuide: TRIGGER_BUILD_GUIDE,
+    triggerRecipes: triggerKnowledge.recipes,
     gmailReceiveOutputFields: EMAIL_RECEIVE_OUTPUT_FIELDS.map((field) => field.name),
     example: GMAIL_INBOX_TO_TABLE_EXAMPLE,
     privileges: {

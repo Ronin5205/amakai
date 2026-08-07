@@ -3,6 +3,7 @@ import {
   getCatalogItemId,
   normalizeMergePortId,
 } from "@/lib/design/component-variant-definitions"
+import { normalizeEditFieldsPortId } from "@/lib/design/edit-fields"
 import { resolveNodeDefinition } from "@/lib/design/resolve-node-definition"
 
 export const CANVAS_NODE_MIN_WIDTH = 220
@@ -126,6 +127,10 @@ export function resolveOutputPortId(
   node: WorkflowNode,
   portId?: string
 ) {
+  if (getCatalogItemId(node) === "action.edit-fields") {
+    return normalizeEditFieldsPortId("output", portId)
+  }
+
   const definition = resolveNodeDefinition(node)
   const firstOutput = definition.outputs[0]?.id
 
@@ -137,6 +142,10 @@ export function resolveOutputPortId(
 }
 
 export function resolveInputPortId(node: WorkflowNode, portId?: string) {
+  if (getCatalogItemId(node) === "action.edit-fields") {
+    return normalizeEditFieldsPortId("input", portId)
+  }
+
   const definition = resolveNodeDefinition(node)
   const firstInput = definition.inputs[0]?.id
 

@@ -75,6 +75,14 @@ export function getOutgoingEdges(
     return edges
   }
 
+  // Legacy edit-fields edges used output-1, output-2, … — treat as main-out.
+  if (port === "main-out") {
+    const legacy = map.get(`${node.id}:output-1`)
+    if (legacy && legacy.length > 0) {
+      return legacy
+    }
+  }
+
   const firstOutput = resolveOutputPortId(node)
   if (port === firstOutput && port !== "main-out") {
     return map.get(`${node.id}:main-out`) ?? []

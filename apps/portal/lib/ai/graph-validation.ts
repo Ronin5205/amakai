@@ -5,7 +5,7 @@ import type { WorkflowGraphDraft } from "@/lib/design/workflow-graph"
 import { getComponentCatalogItemById } from "@/lib/design/component-catalog"
 import { resolveNodeDefinition } from "@/lib/design/resolve-node-definition"
 import {
-  applyTriggerModeDefaults,
+  canonicalizeTriggerConfig,
   isUnifiedTriggerCatalogId,
   normalizeTriggerMode,
 } from "@/lib/design/trigger-config"
@@ -62,13 +62,6 @@ const NODE_KIND_ALIASES: Record<string, WorkflowNode["kind"]> = {
   action: "sequential",
 }
 
-function looksLikeEmailInboxTrigger(node: Record<string, unknown>): boolean {
-  const label = String(node.label ?? "")
-  return /\b(gmail|outlook|inbox|email\s*trigger|mail\s*trigger|new\s*email)\b/i.test(
-    label
-  )
-}
-
 function normalizeNodeInput(raw: unknown): unknown {
   if (!raw || typeof raw !== "object") {
     return raw
@@ -103,29 +96,15 @@ function normalizeNodeInput(raw: unknown): unknown {
     kind = catalogItem.kind
   }
 
-  const triggerMode = config.triggerMode ?? config.triggerType
-  const mode = normalizeTriggerMode({
-    id: String(node.id ?? "draft"),
-    label: String(node.label ?? "Trigger"),
-    kind: "trigger",
-    config,
-  } as WorkflowNode)
-
-  if (
-    catalogItemId &&
-    isUnifiedTriggerCatalogId(catalogItemId) &&
-    looksLikeEmailInboxTrigger(node) &&
-    mode === "manual"
-  ) {
-    Object.assign(config, applyTriggerModeDefaults("integration", config))
-  } else if (
-    catalogItemId &&
-    isUnifiedTriggerCatalogId(catalogItemId) &&
-    (triggerMode === "email" ||
-      triggerMode === "gmail" ||
-      triggerMode === "integration")
-  ) {
-    Object.assign(config, applyTriggerModeDefaults("integration", config))
+  if (catalogItemId && isUnifiedTriggerCatalogId(catalogItemId)) {
+    Object.assign(
+      config,
+      canonicalizeTriggerConfig(config, {
+        label: String(node.label ?? ""),
+        catalogItemId,
+      })
+    )
+    kind = "trigger"
   }
 
   delete node.catalogItemId
@@ -247,7 +226,7 @@ export function validateAiWorkflowGraph(
     if (
       isUnifiedTriggerCatalogId(catalogItemId) &&
       normalizeTriggerMode(node as WorkflowNode) === "manual" &&
-      looksLikeEmailInboxTrigger(node as Record<string, unknown>)
+      /\b(gmail|outlook|inbox|email)\b/i.test(node.label)
     ) {
       issues.push(
         `${node.label}: email/Gmail inbox triggers must use triggerMode integration (Gmail/Outlook receive), not manual.`
