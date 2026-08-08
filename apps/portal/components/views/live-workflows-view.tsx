@@ -81,7 +81,12 @@ export function LiveWorkflowsView({
                 </Link>
               </TableCell>
               <TableCell>
-                <StatusBadge status="production" label="Live" />
+                {workflow.subscriptionStatus === "pending_setup" ||
+                workflow.setupRequired ? (
+                  <StatusBadge status="warning" label="Setup needed" />
+                ) : (
+                  <StatusBadge status="production" label="Live" />
+                )}
               </TableCell>
               <TableCell className="capitalize text-muted-foreground">
                 <div className="flex flex-col gap-1">
@@ -89,6 +94,11 @@ export function LiveWorkflowsView({
                   {workflow.webhookUrl ? (
                     <span className="max-w-[220px] truncate text-[11px] normal-case text-muted-foreground/80">
                       {workflow.webhookUrl}
+                    </span>
+                  ) : null}
+                  {workflow.subscriptionWarning ? (
+                    <span className="max-w-[260px] text-[11px] normal-case text-amber-700 dark:text-amber-400">
+                      {workflow.subscriptionWarning}
                     </span>
                   ) : null}
                 </div>

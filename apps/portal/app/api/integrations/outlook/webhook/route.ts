@@ -6,7 +6,8 @@ import { getSecretPayloadForUser } from "@/lib/data/secrets"
 import type { OAuthTokenPayload, SecretMetadata } from "@/lib/domain/secret"
 import { ensureFreshOAuthToken } from "@/lib/integrations/auth/token-refresh"
 import { normalizeOutlookMessage } from "@/lib/integrations/email/adapters"
-import type { TriggerSubscriptionRow } from "@/lib/data/trigger-subscriptions"
+import { buildEmailPayload } from "@/lib/triggers"
+import type { TriggerSubscriptionRow } from "@/lib/triggers"
 
 type GraphNotification = {
   subscriptionId?: string
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
         .select("*")
         .eq("subscription_ref", notification.subscriptionId)
         .eq("provider", "outlook")
+        .eq("status", "active")
         .maybeSingle()
 
       if (!subscription) {
@@ -68,6 +70,10 @@ export async function POST(request: Request) {
 
       const secretName = String(row.metadata?.secretName ?? "")
       if (!secretName) {
+        console.error(
+          "[outlook/webhook] Subscription missing secretName:",
+          row.id
+        )
         continue
       }
 
@@ -77,6 +83,7 @@ export async function POST(request: Request) {
         secretName
       )
       if (!secret) {
+        console.error("[outlook/webhook] Secret not found:", row.id)
         continue
       }
 
@@ -98,6 +105,11 @@ export async function POST(request: Request) {
         { headers: { Authorization: `Bearer ${tokens.accessToken}` } }
       )
       if (!detail.ok) {
+        console.error(
+          "[outlook/webhook] Failed to fetch message:",
+          detail.status,
+          await detail.text()
+        )
         continue
       }
 
@@ -116,12 +128,7 @@ export async function POST(request: Request) {
         workflowName: workflow?.name ?? "Workflow",
         triggerLabel: "email",
         triggerNodeId: row.trigger_node_id,
-        payload: {
-          ...normalized,
-          triggerType: "email",
-          provider: "outlook",
-          triggeredAt: new Date().toISOString(),
-        },
+        payload: buildEmailPayload(normalized, "outlook"),
         eventKey: normalized.messageId
           ? `outlook:${normalized.messageId}`
           : undefined,
@@ -130,6 +137,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
+    console.error("[outlook/webhook] Handler failed:", error)
     return NextResponse.json(
       {
         error:

@@ -14,6 +14,7 @@ import {
   normalizeTriggerMode,
   resolveTriggerDisplayLabel,
 } from "@/lib/design/trigger-config"
+import { withCanonicalTriggerConfig } from "@/lib/triggers/resolve"
 import { createClient } from "@/utils/supabase/server"
 
 const PRODUCTION_ENVIRONMENT = {
@@ -166,32 +167,32 @@ export async function deployWorkflowDraft(
     throw new Error(releaseError.message ?? "Failed to record deployment.")
   }
 
-  // Ensure webhook/signal tokens exist, then register inbound subscriptions
+  // Canonicalize trigger configs, ensure webhook tokens, then register subscriptions
   const graphPayload = graph as WorkflowGraphPayload
   const nodes = (graphPayload.nodes ?? []).map((node) => {
     if (node.kind !== "trigger") {
       return node
     }
 
-    if (!needsWebhookToken(node)) {
-      return node
+    let next = withCanonicalTriggerConfig(node)
+
+    if (needsWebhookToken(next)) {
+      const existing =
+        typeof next.config.webhookToken === "string"
+          ? next.config.webhookToken.trim()
+          : ""
+      if (!existing) {
+        next = {
+          ...next,
+          config: {
+            ...next.config,
+            webhookToken: crypto.randomUUID(),
+          },
+        }
+      }
     }
 
-    if (
-      node.config.webhookToken &&
-      String(node.config.webhookToken).trim() !== ""
-    ) {
-      return node
-    }
-
-    return {
-      ...node,
-      config: {
-        ...node.config,
-        triggerMode: normalizeTriggerMode(node),
-        webhookToken: crypto.randomUUID(),
-      },
-    }
+    return next
   })
 
   if (JSON.stringify(nodes) !== JSON.stringify(graphPayload.nodes ?? [])) {
@@ -200,11 +201,16 @@ export async function deployWorkflowDraft(
       .update({ graph: { ...graphPayload, nodes } })
       .eq("id", versionRow.id)
       .eq("user_id", auth.userId)
+
+    // Keep draft graph aligned so redeploy stays consistent.
+    await auth.supabase
+      .from("workflows")
+      .update({ graph: { ...graphPayload, nodes }, updated_at: deployedAt })
+      .eq("id", workflowId)
+      .eq("user_id", auth.userId)
   }
 
-  const { syncTriggerSubscriptions } = await import(
-    "@/lib/data/trigger-subscriptions"
-  )
+  const { syncTriggerSubscriptions } = await import("@/lib/triggers")
   await syncTriggerSubscriptions({
     workflowId,
     nodes,
@@ -253,13 +259,19 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
 
   const { data: subscriptions } = await auth.supabase
     .from("workflow_trigger_subscriptions")
-    .select("workflow_id, webhook_token, status, provider, operation")
+    .select("workflow_id, webhook_token, status, provider, operation, metadata")
     .eq("user_id", auth.userId)
     .in("workflow_id", workflowIds)
 
   const subscriptionByWorkflow = new Map<
     string,
-    { webhook_token: string | null; status: string; provider: string; operation: string }
+    {
+      webhook_token: string | null
+      status: string
+      provider: string
+      operation: string
+      metadata: Record<string, unknown> | null
+    }
   >()
   for (const row of subscriptions ?? []) {
     if (!subscriptionByWorkflow.has(row.workflow_id)) {
@@ -278,6 +290,9 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
 
     const nodes = versionGraph.nodes ?? []
     const triggerNode = nodes.find((node) => node.kind === "trigger")
+    const triggerMode = triggerNode
+      ? normalizeTriggerMode(triggerNode)
+      : undefined
     const triggerType = triggerNode
       ? resolveTriggerDisplayLabel(triggerNode)
       : undefined
@@ -288,16 +303,31 @@ export async function listLiveWorkflows(): Promise<LiveWorkflow[]> {
         ? `${portalUrl}/api/webhooks/${subscription.webhook_token}`
         : undefined
 
+    const warning =
+      typeof subscription?.metadata?.warning === "string"
+        ? subscription.metadata.warning
+        : undefined
+    const setupRequired =
+      typeof subscription?.metadata?.setupRequired === "string"
+        ? subscription.metadata.setupRequired
+        : undefined
+
     return {
       id: workflow.id,
       name: workflow.name,
       deployedAt: deployedAtByWorkflowId.get(workflow.id) ?? workflow.updated_at,
       updatedAt: deployedAtByWorkflowId.get(workflow.id) ?? workflow.updated_at,
-      health: "healthy" as const,
+      health:
+        subscription?.status === "pending_setup" || setupRequired
+          ? ("degraded" as const)
+          : ("healthy" as const),
       nodeCount: nodes.length,
+      triggerMode,
       triggerType,
       webhookUrl,
       subscriptionStatus: subscription?.status,
+      subscriptionWarning: warning,
+      setupRequired,
     }
   })
 }
@@ -374,13 +404,16 @@ export async function getLiveWorkflow(
   const nodes = publishedVersion.graph.nodes ?? []
   const edges = publishedVersion.graph.edges ?? []
   const triggerNode = nodes.find((node) => node.kind === "trigger")
+  const triggerMode = triggerNode
+    ? normalizeTriggerMode(triggerNode)
+    : undefined
   const triggerType = triggerNode
     ? resolveTriggerDisplayLabel(triggerNode)
     : undefined
 
   const { data: subscription } = await auth.supabase
     .from("workflow_trigger_subscriptions")
-    .select("webhook_token, status")
+    .select("webhook_token, status, metadata")
     .eq("user_id", auth.userId)
     .eq("workflow_id", workflowId)
     .order("created_at", { ascending: true })
@@ -390,18 +423,35 @@ export async function getLiveWorkflow(
   const portalUrl =
     process.env.NEXT_PUBLIC_PORTAL_URL ?? "http://localhost:3001"
 
+  const metadata = (subscription?.metadata ?? null) as Record<
+    string,
+    unknown
+  > | null
+  const warning =
+    typeof metadata?.warning === "string" ? metadata.warning : undefined
+  const setupRequired =
+    typeof metadata?.setupRequired === "string"
+      ? metadata.setupRequired
+      : undefined
+
   return {
     id: mapped.id,
     name: mapped.name,
     deployedAt: publishedVersion.createdAt,
     updatedAt: publishedVersion.createdAt,
-    health: "healthy",
+    health:
+      subscription?.status === "pending_setup" || setupRequired
+        ? "degraded"
+        : "healthy",
     nodeCount: nodes.length,
+    triggerMode,
     triggerType,
     webhookUrl: subscription?.webhook_token
       ? `${portalUrl}/api/webhooks/${subscription.webhook_token}`
       : undefined,
     subscriptionStatus: subscription?.status,
+    subscriptionWarning: warning,
+    setupRequired,
     nodes,
     edges,
   }

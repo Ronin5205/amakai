@@ -29,7 +29,7 @@ export function DashboardView({
           <div className="flex flex-col gap-1">
             <h2 className="text-sm font-medium">Production runs</h2>
             <p className="text-sm text-muted-foreground">
-              Execute deployed workflows and review recent run history.
+              Start manual workflows and review recent run history.
             </p>
           </div>
           <Button size="sm" render={<Link href="/production/runs" />}>

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/utils/supabase/admin"
 import { enqueueAndProcessInboundRun } from "@/lib/data/inbound-runs"
 import type { TriggerSubscriptionRow } from "@/lib/data/trigger-subscriptions"
+import { buildSchedulePayload } from "@/lib/triggers"
 import {
   cronSlotKey,
   isCronDue,
@@ -103,19 +104,13 @@ export async function fireDueSchedules(
     let due = false
     let slot = cronSlotKey(now)
     let summary = "schedule"
-    let payloadExtra: Record<string, unknown> = {}
 
     if (schedule) {
       due = isTriggerScheduleDue({ schedule, now, lastFiredAt })
       slot = scheduleSlotKey(schedule, now)
       summary = formatScheduleSummary(schedule)
-      payloadExtra = {
-        schedule,
-        scheduleSummary: summary,
-      }
     } else if (legacyCron) {
       due = isCronDue({ expression: legacyCron, now, lastFiredAt })
-      payloadExtra = { cron: legacyCron }
     } else {
       results.push({
         subscriptionId: subscription.id,
@@ -160,12 +155,13 @@ export async function fireDueSchedules(
         workflowName: workflow.name ?? "Workflow",
         triggerLabel: "schedule",
         triggerNodeId: subscription.trigger_node_id,
-        payload: {
-          triggerType: "schedule",
+        payload: buildSchedulePayload({
           scheduledFor: floorToMinuteIso(now),
           triggeredAt: firedAt.toISOString(),
-          ...payloadExtra,
-        },
+          schedule: schedule ?? undefined,
+          scheduleSummary: schedule ? summary : undefined,
+          cron: legacyCron ?? undefined,
+        }),
         eventKey: `schedule:${subscription.id}:${slot}`,
       })
 

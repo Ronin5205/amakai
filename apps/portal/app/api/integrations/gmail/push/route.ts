@@ -3,7 +3,10 @@ import { NextResponse } from "next/server"
 import {
   findSubscriptionsByAccountEmail,
   updateSubscriptionHistoryId,
-} from "@/lib/data/trigger-subscriptions"
+  listNewGmailMessages,
+  registerGmailWatch,
+  buildEmailPayload,
+} from "@/lib/triggers"
 import { enqueueAndProcessInboundRun } from "@/lib/data/inbound-runs"
 import { createAdminClient } from "@/utils/supabase/admin"
 import { getSecretPayloadForUser } from "@/lib/data/secrets"
@@ -49,10 +52,15 @@ export async function POST(request: Request) {
     }
 
     const supabase = createAdminClient()
+    const topic = process.env.GMAIL_PUBSUB_TOPIC
 
     for (const subscription of subscriptions) {
       const secretName = String(subscription.metadata?.secretName ?? "")
       if (!secretName) {
+        console.error(
+          "[gmail/push] Subscription missing secretName:",
+          subscription.id
+        )
         continue
       }
 
@@ -62,6 +70,10 @@ export async function POST(request: Request) {
         secretName
       )
       if (!secret) {
+        console.error(
+          "[gmail/push] Secret not found for subscription:",
+          subscription.id
+        )
         continue
       }
 
@@ -76,7 +88,13 @@ export async function POST(request: Request) {
       const startHistoryId = subscription.last_history_id
       const messages = await listNewGmailMessages(
         tokens.accessToken,
-        startHistoryId
+        startHistoryId,
+        {
+          subscriptionId: subscription.id,
+          reRegisterWatch: topic
+            ? () => registerGmailWatch(tokens.accessToken, topic)
+            : undefined,
+        }
       )
 
       const { data: workflow } = await supabase
@@ -86,19 +104,16 @@ export async function POST(request: Request) {
         .maybeSingle()
 
       for (const message of messages) {
-        const normalized = await normalizeGmailMessage(message)
+        const normalized = await normalizeGmailMessage(
+          message as Parameters<typeof normalizeGmailMessage>[0]
+        )
         await enqueueAndProcessInboundRun({
           userId: subscription.user_id,
           workflowId: subscription.workflow_id,
           workflowName: workflow?.name ?? "Workflow",
           triggerLabel: "email",
           triggerNodeId: subscription.trigger_node_id,
-          payload: {
-            ...normalized,
-            triggerType: "email",
-            provider: "gmail",
-            triggeredAt: new Date().toISOString(),
-          },
+          payload: buildEmailPayload(normalized, "gmail"),
           eventKey: normalized.messageId
             ? `gmail:${normalized.messageId}`
             : undefined,
@@ -110,9 +125,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // Pub/Sub expects 2xx quickly
     return NextResponse.json({ ok: true })
   } catch (error) {
+    console.error("[gmail/push] Handler failed:", error)
     return NextResponse.json(
       {
         error:
@@ -121,71 +136,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
-
-async function listNewGmailMessages(
-  accessToken: string,
-  startHistoryId: string | null
-) {
-  if (!startHistoryId) {
-    // Fallback: fetch the latest inbox message
-    const list = await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&labelIds=INBOX",
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    )
-    if (!list.ok) {
-      return []
-    }
-    const json = (await list.json()) as {
-      messages?: Array<{ id: string }>
-    }
-    const id = json.messages?.[0]?.id
-    if (!id) {
-      return []
-    }
-    const detail = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    )
-    if (!detail.ok) {
-      return []
-    }
-    return [await detail.json()]
-  }
-
-  const history = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  )
-
-  if (!history.ok) {
-    return []
-  }
-
-  const json = (await history.json()) as {
-    history?: Array<{
-      messagesAdded?: Array<{ message?: { id?: string } }>
-    }>
-  }
-
-  const ids = new Set<string>()
-  for (const entry of json.history ?? []) {
-    for (const added of entry.messagesAdded ?? []) {
-      if (added.message?.id) {
-        ids.add(added.message.id)
-      }
-    }
-  }
-
-  const messages = []
-  for (const id of ids) {
-    const detail = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    )
-    if (detail.ok) {
-      messages.push(await detail.json())
-    }
-  }
-  return messages
 }

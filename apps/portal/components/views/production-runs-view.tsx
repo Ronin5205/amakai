@@ -39,7 +39,7 @@ import {
 import { Textarea } from "@amakai/shared/components/ui/textarea"
 
 export interface ProductionRunsViewProps {
-  liveWorkflows: LiveWorkflow[]
+  manualWorkflows: LiveWorkflow[]
   workflowDetails: LiveWorkflowDetail[]
 }
 
@@ -90,12 +90,12 @@ function buildTriggerPayloads(
 }
 
 export function ProductionRunsView({
-  liveWorkflows,
+  manualWorkflows,
   workflowDetails,
 }: ProductionRunsViewProps) {
   const router = useRouter()
   const [selectedWorkflowId, setSelectedWorkflowId] = React.useState(
-    liveWorkflows[0]?.id ?? ""
+    manualWorkflows[0]?.id ?? ""
   )
   const [isRunning, setIsRunning] = React.useState(false)
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null)
@@ -151,11 +151,11 @@ export function ProductionRunsView({
 
   const workflowItems = React.useMemo(
     () =>
-      liveWorkflows.map((workflow) => ({
+      manualWorkflows.map((workflow) => ({
         value: workflow.id,
         label: workflow.name,
       })),
-    [liveWorkflows]
+    [manualWorkflows]
   )
 
   const setTriggerFieldValue = React.useCallback(
@@ -216,17 +216,17 @@ export function ProductionRunsView({
     useCustomJson,
   ])
 
-  if (liveWorkflows.length === 0) {
+  if (manualWorkflows.length === 0) {
     return (
       <Empty className="border">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <RocketLaunchIcon />
           </EmptyMedia>
-          <EmptyTitle>No live workflows to run</EmptyTitle>
+          <EmptyTitle>No manual workflows to run</EmptyTitle>
           <EmptyDescription>
-            Deploy a workflow from the editor first, then return here to execute
-            it in production.
+            Only workflows with a manual trigger can be started here. Deploy a
+            manual workflow from the editor to run it in production.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -237,7 +237,7 @@ export function ProductionRunsView({
     <div className="grid gap-6 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-3 border p-4">
-          <Label htmlFor="production-workflow-select">Live workflow</Label>
+          <Label htmlFor="production-workflow-select">Manual workflow</Label>
           <Select
             items={workflowItems}
             value={selectedWorkflowId || null}

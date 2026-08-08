@@ -43,7 +43,7 @@ export default async function Page({ params }) {
 | `planning.ts` | `getPlanningStages`, `getSampleAnalysis`, `getClarificationQuestions` | Stubs (empty) | `planning` |
 | `secrets.ts` | CRUD, OAuth state, encrypted payloads | Supabase | `secret` |
 | `billing.ts` | Billing profile, plan, Stripe customer/subscription sync | Supabase + Stripe | `billing` |
-| `trigger-subscriptions.ts` | `syncTriggerSubscriptions`, webhook/email subscription lookup | Supabase | — |
+| `trigger-subscriptions.ts` | Re-exports from `lib/triggers` (sync + lookup) | `lib/triggers` | — |
 | `schedule-runs.ts` | `fireDueSchedules`, schedule subscription helpers | Supabase | — |
 | `inbound-runs.ts` | `enqueueAndProcessInboundRun`, `processQueuedExecution` | Supabase | — |
 | `ai-threads.ts` | `listAiThreads`, `getOrCreateAiThread`, `listAiMessages`, `appendAiMessage` | Supabase | `ai` |
@@ -53,6 +53,7 @@ Supporting logic (not accessors):
 
 | Location | Role |
 |----------|------|
+| `lib/triggers/` | Trigger runtime: sync, payloads, Gmail/Outlook renew, registry |
 | `lib/validation/` | Zod schemas and limits for names, tables, workflow node config |
 | `lib/stripe/` | Sole Stripe gateway (`gateway.ts`), ID crypto, public exports |
 | `lib/operate/production-execution-insights.ts` | Parse run results → logs, monitoring metrics, trigger input |
@@ -88,7 +89,7 @@ Apply migrations in `supabase/migrations/` (oldest first):
 1. User deploys from the workflow editor (`deployWorkflowDraft`) → workflow status `published`, version `live`, trigger subscriptions synced (webhook token, schedule metadata, Gmail/Outlook watches).
 2. A run starts from:
    - **Production → Runs** (`startProductionRun`) with optional trigger payload, or
-   - **Inbound triggers:** `POST /api/webhooks/{token}`, email push routes, or schedule tick via `POST /api/internal/process-queue` → `enqueueAndProcessInboundRun` / `fireDueSchedules`.
+   - **Inbound triggers:** `POST /api/webhooks/{token}`, email push routes, or schedule tick via `POST /api/internal/process-queue` → renews email watches, `fireDueSchedules`, `enqueueAndProcessInboundRun`.
 3. Run is stored in `workflow_executions` with `result` JSON (steps, trigger input, optional `pendingApproval` / `pendingWait`).
 4. **Operate → Logs**, **Live Workflows → Executions/Monitoring**, and **Production → History** read from the same table.
 5. After each run, executions older than the last **20 per workflow** are deleted.

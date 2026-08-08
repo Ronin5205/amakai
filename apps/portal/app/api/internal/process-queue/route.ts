@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/utils/supabase/admin"
 import { processQueuedExecution } from "@/lib/data/inbound-runs"
 import { fireDueSchedules } from "@/lib/data/schedule-runs"
+import { renewExpiringSubscriptions } from "@/lib/triggers"
 
 function assertCronAuthorized(request: Request) {
   const cronSecret = process.env.CRON_SECRET
@@ -23,7 +24,7 @@ function assertCronAuthorized(request: Request) {
 }
 
 /**
- * MVP worker tick: fire due schedule triggers, then process queued executions.
+ * MVP worker tick: renew email watches, fire due schedules, process queued executions.
  * Call every minute from cron. Protect with CRON_SECRET when set.
  */
 export async function POST(request: Request) {
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    const renewResults = await renewExpiringSubscriptions()
     const scheduleResults = await fireDueSchedules()
 
     const supabase = createAdminClient()
@@ -51,6 +53,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
+      renewals: {
+        checked: renewResults.length,
+        renewed: renewResults.filter((result) => result.status === "renewed")
+          .length,
+        results: renewResults,
+      },
       schedules: {
         checked: scheduleResults.length,
         fired: scheduleResults.filter((result) => result.status === "fired")

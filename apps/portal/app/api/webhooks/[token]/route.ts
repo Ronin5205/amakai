@@ -6,6 +6,7 @@ import { enqueueAndProcessInboundRun } from "@/lib/data/inbound-runs"
 import { createAdminClient } from "@/utils/supabase/admin"
 import { getSecretPayloadForUser } from "@/lib/data/secrets"
 import type { WebhookSigningPayload } from "@/lib/domain/secret"
+import { buildWebhookPayload } from "@/lib/triggers"
 
 async function readBody(request: Request) {
   const contentType = request.headers.get("content-type") ?? ""
@@ -104,10 +105,10 @@ export async function POST(
       .eq("id", subscription.workflow_id)
       .maybeSingle()
 
-    const payload =
-      body && typeof body === "object" && !Array.isArray(body)
-        ? (body as Record<string, unknown>)
-        : { payload: body }
+    const payload = buildWebhookPayload(
+      body,
+      subscription.operation || "webhook"
+    )
 
     const idempotency =
       request.headers.get("idempotency-key") ??
@@ -120,11 +121,7 @@ export async function POST(
       workflowName: workflow?.name ?? "Workflow",
       triggerLabel: subscription.operation || "webhook",
       triggerNodeId: subscription.trigger_node_id,
-      payload: {
-        ...payload,
-        triggeredAt: new Date().toISOString(),
-        triggerType: subscription.operation || "webhook",
-      },
+      payload,
       eventKey: idempotency ? `webhook:${idempotency}` : undefined,
     })
 

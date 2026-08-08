@@ -1,7 +1,10 @@
 import { getLiveWorkflow } from "@/lib/data/deployments"
 import type { ProductionRun, ProductionRunSummary } from "@/lib/domain/production"
 import type { ExecutionStatus } from "@/lib/domain/execution"
-import { resolveTriggerDisplayLabel } from "@/lib/design/trigger-config"
+import {
+  normalizeTriggerMode,
+  resolveTriggerDisplayLabel,
+} from "@/lib/design/trigger-config"
 import { runPlaygroundValidation } from "@/lib/engine/playground"
 import type { PlaygroundRunResult } from "@/lib/engine/types"
 import { executeIntegrationNodeProduction } from "@/lib/integrations/registry/server-runtime"
@@ -303,6 +306,11 @@ export async function startProductionRun(
   }
 
   const triggerNode = workflow.nodes.find((node) => node.kind === "trigger")
+  if (triggerNode && normalizeTriggerMode(triggerNode) !== "manual") {
+    throw new Error(
+      "Only manual workflows can be started from Production. Automated workflows run via their configured trigger."
+    )
+  }
   const triggerType = triggerNode
     ? resolveTriggerDisplayLabel(triggerNode)
     : "manual"
